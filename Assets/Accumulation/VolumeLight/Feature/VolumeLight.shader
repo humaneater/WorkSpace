@@ -6,16 +6,15 @@ Shader "PostProcess/VolumeLight"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
-        LOD 100
 
         Pass
         {
+            name "AAAAAAAA"
+            ztest always
+            zwrite off
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            // make fog work
-            #pragma multi_compile_fog
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -45,6 +44,7 @@ Shader "PostProcess/VolumeLight"
 
             float4 frag (v2f i) : SV_Target
             {
+                return 1;
                 // sample the texture
                 float4 col = tex2D(_MainTex, i.uv);
                 // apply fog

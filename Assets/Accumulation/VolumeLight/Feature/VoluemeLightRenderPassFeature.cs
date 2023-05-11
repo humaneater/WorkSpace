@@ -46,20 +46,28 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
             mMat.SetFloat(mStepSpeed,mVolume.mSpeed.value);
             mMat.SetFloat(mMaxDistance,mVolume.mMaxDistance.value);
             var cmd = CommandBufferPool.Get();
+            cmd.Clear();
             DoRender(cmd,renderingData);
-
+            cmd.Release();
         }
 
         private void DoRender(CommandBuffer cmd,RenderingData renderingData)
         {
             var source = _renderer.cameraColorTarget;
             var depth = _renderer.cameraDepthTarget;
+            int width = renderingData.cameraData.camera.pixelWidth / 2;
+            int height = renderingData.cameraData.camera.pixelHeight / 2;
+
+            RenderTextureDescriptor descriptor = new RenderTextureDescriptor(width, height, RenderTextureFormat.ARGB32);
+            cmd.GetTemporaryRT(mVolumeLightRT,descriptor);
+            //cmd.SetRenderTarget(mVolumeLightID);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh,Matrix4x4.identity, mMat,0);
         }
 
         // Cleanup any allocated resources that were created during the execution of this render pass.
         public override void OnCameraCleanup(CommandBuffer cmd)
         {
+            cmd.ReleaseTemporaryRT(mVolumeLightRT);
         }
     }
 
