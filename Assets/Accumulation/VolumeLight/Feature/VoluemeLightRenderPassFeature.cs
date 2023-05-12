@@ -7,9 +7,8 @@ using UnityEngine.Rendering.Universal;
 internal class VolumeLightSettings
 {
     [SerializeField] internal RenderPassEvent m_Event = RenderPassEvent.AfterRenderingOpaques;
-
-
 }
+
 public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
 {
     class VolumeLightRenderPass : ScriptableRenderPass
@@ -17,59 +16,73 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
         private VolumeLightVolume mVolume;
         private Material mMat;
         private static readonly int mStepLength = Shader.PropertyToID("_StepLength");
-        private static readonly int mStepSpeed = Shader.PropertyToID("_StepSpeed");
+        private static readonly int mStepSpeed = Shader.PropertyToID("_SpeedUp");
         private static readonly int mMaxDistance = Shader.PropertyToID("_CameraMaxDistance");
+        private static readonly int mStepCount = Shader.PropertyToID("_StepCount");
+        private static readonly int mMieVector = Shader.PropertyToID("_MieScatteringFactor");
+        private static readonly int mBlurValue = Shader.PropertyToID("_BlurValue");
         private static readonly int mVolumeLightRT = Shader.PropertyToID("_VolumeLightTex");
+        private static readonly int mVolumeLightTemp = Shader.PropertyToID("_VolumeLightTemp");
+        private Vector3 mMieFactor = Vector3.one;
         private RenderTargetIdentifier mVolumeLightID = new RenderTargetIdentifier(mVolumeLightRT);
+        private RenderTargetIdentifier mVolumeLightTempID = new RenderTargetIdentifier(mVolumeLightTemp);
         private ScriptableRenderer _renderer;
-        
-        
+
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
         }
 
-        public void SetUp(VolumeLightVolume volume,Material material,ScriptableRenderer renderer)
+        public void SetUp(VolumeLightVolume volume, Material material, ScriptableRenderer renderer)
         {
             mVolume = volume;
             mMat = material;
             _renderer = renderer;
         }
-
-        // Here you can implement the rendering logic.
-        // Use <c>ScriptableRenderContext</c> to issue drawing commands or execute command buffers
-        // https://docs.unity3d.com/ScriptReference/Rendering.ScriptableRenderContext.html
-        // You don't have to call ScriptableRenderContext.submit, the render pipeline will call it at specific points in the pipeline.
+        
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            mMat.SetFloat(mStepLength,mVolume.mStep.value);
-            mMat.SetFloat(mStepSpeed,mVolume.mSpeed.value);
-            mMat.SetFloat(mMaxDistance,mVolume.mMaxDistance.value);
+            mMieFactor.x = mVolume.mMieStrength.value;
+            mMieFactor.y = mVolume.mMieY.value;
+            mMieFactor.z = mVolume.mMieScatter.value;
+            mMat.SetFloat(mStepLength, mVolume.mStep.value);
+            mMat.SetFloat(mStepSpeed, mVolume.mSpeed.value);
+            mMat.SetFloat(mMaxDistance, mVolume.mMaxDistance.value);
+            mMat.SetFloat(mStepCount, mVolume.mStepCount.value);
+            mMat.SetFloat(mBlurValue, mVolume.mBlueValue.value);
+            mMat.SetVector(mMieVector, mMieFactor);
             var cmd = CommandBufferPool.Get();
             cmd.Clear();
-            DoRender(cmd,renderingData);
+            DoRender(cmd, renderingData);
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
         }
 
-        private void DoRender(CommandBuffer cmd,RenderingData renderingData)
+        private void DoRender(CommandBuffer cmd, RenderingData renderingData)
         {
             var source = _renderer.cameraColorTarget;
             var depth = _renderer.cameraDepthTarget;
-            int width = renderingData.cameraData.camera.pixelWidth / 2;
-            int height = renderingData.cameraData.camera.pixelHeight / 2;
+            //降分辨率
+            int width = renderingData.cameraData.camera.pixelWidth / mVolume.mDownSampling.value;
+            int height = renderingData.cameraData.camera.pixelHeight / mVolume.mDownSampling.value;
 
             RenderTextureDescriptor descriptor = new RenderTextureDescriptor(width, height, RenderTextureFormat.ARGB32);
-            cmd.GetTemporaryRT(mVolumeLightRT,descriptor);
-            //cmd.SetRenderTarget(mVolumeLightID);
-            cmd.DrawMesh(RenderingUtils.fullscreenMesh,Matrix4x4.identity, mMat,0,0);
+            //思路：先全屏画到一个rt上，再把这个rt模糊，再画回原图
+            cmd.GetTemporaryRT(mVolumeLightRT, descriptor);
+            cmd.GetTemporaryRT(mVolumeLightTemp, descriptor);
+            cmd.SetRenderTarget(mVolumeLightID);
+            cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mMat, 0, 0);
+            cmd.SetRenderTarget(mVolumeLightTempID);
+            cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mMat, 0, 1);
+            cmd.SetRenderTarget(source);
+            cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mMat, 0, 2);
             cmd.ReleaseTemporaryRT(mVolumeLightRT);
+            cmd.ReleaseTemporaryRT(mVolumeLightTemp);
         }
 
         // Cleanup any allocated resources that were created during the execution of this render pass.
         public override void OnCameraCleanup(CommandBuffer cmd)
         {
-            
         }
     }
 
@@ -96,6 +109,7 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
                 return false;
             }
         }
+
         m_Mat = CoreUtils.CreateEngineMaterial(m_Shader);
         return true;
     }
@@ -104,7 +118,7 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
     public override void Create()
     {
         m_ScriptablePass = new VolumeLightRenderPass();
-    
+
         // Configures where the render pass should be injected.
         m_ScriptablePass.renderPassEvent = m_Setting.m_Event;
         GetMaterial();
@@ -119,10 +133,11 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
             Debug.LogError("材质丢失！！！");
             return;
         }
+
         VolumeLightVolume volumeLight = VolumeManager.instance.stack.GetComponent<VolumeLightVolume>();
         if (volumeLight != null && volumeLight.IsActive())
         {
-            m_ScriptablePass.SetUp(volumeLight,m_Mat,renderer);
+            m_ScriptablePass.SetUp(volumeLight, m_Mat, renderer);
             renderer.EnqueuePass(m_ScriptablePass);
         }
     }

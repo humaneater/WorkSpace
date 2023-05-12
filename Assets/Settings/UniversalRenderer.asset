@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Active: 1
   m_Setting:
-    m_Event: 350
+    m_Event: 550
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -89,12 +89,30 @@ MonoBehaviour:
   mTrigger:
     m_OverrideState: 1
     m_Value: 1
+  mMieStrength:
+    m_OverrideState: 1
+    m_Value: 0.735
+  mMieY:
+    m_OverrideState: 1
+    m_Value: 3.37
+  mMieScatter:
+    m_OverrideState: 1
+    m_Value: 0.55
   mStep:
     m_OverrideState: 1
-    m_Value: 1
+    m_Value: 1.28
   mSpeed:
     m_OverrideState: 1
     m_Value: 1
   mMaxDistance:
     m_OverrideState: 1
-    m_Value: 20
+    m_Value: 40
+  mStepCount:
+    m_OverrideState: 1
+    m_Value: 12
+  mBlueValue:
+    m_OverrideState: 1
+    m_Value: 4.01
+  mDownSampling:
+    m_OverrideState: 1
+    m_Value: 1
