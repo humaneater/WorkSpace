@@ -18,7 +18,7 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
         private Material mMat;
         private static readonly int mStepLength = Shader.PropertyToID("_StepLength");
         private static readonly int mStepSpeed = Shader.PropertyToID("_StepSpeed");
-        private static readonly int mMaxDistance = Shader.PropertyToID("_MaxDistance");
+        private static readonly int mMaxDistance = Shader.PropertyToID("_CameraMaxDistance");
         private static readonly int mVolumeLightRT = Shader.PropertyToID("_VolumeLightTex");
         private RenderTargetIdentifier mVolumeLightID = new RenderTargetIdentifier(mVolumeLightRT);
         private ScriptableRenderer _renderer;
@@ -48,7 +48,8 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
             var cmd = CommandBufferPool.Get();
             cmd.Clear();
             DoRender(cmd,renderingData);
-            cmd.Release();
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
         }
 
         private void DoRender(CommandBuffer cmd,RenderingData renderingData)
@@ -61,13 +62,14 @@ public class VoluemeLightRenderPassFeature : ScriptableRendererFeature
             RenderTextureDescriptor descriptor = new RenderTextureDescriptor(width, height, RenderTextureFormat.ARGB32);
             cmd.GetTemporaryRT(mVolumeLightRT,descriptor);
             //cmd.SetRenderTarget(mVolumeLightID);
-            cmd.DrawMesh(RenderingUtils.fullscreenMesh,Matrix4x4.identity, mMat,0);
+            cmd.DrawMesh(RenderingUtils.fullscreenMesh,Matrix4x4.identity, mMat,0,0);
+            cmd.ReleaseTemporaryRT(mVolumeLightRT);
         }
 
         // Cleanup any allocated resources that were created during the execution of this render pass.
         public override void OnCameraCleanup(CommandBuffer cmd)
         {
-            cmd.ReleaseTemporaryRT(mVolumeLightRT);
+            
         }
     }
 
