@@ -304,17 +304,17 @@
             {
                 "LightMode" = "Outline"
             }
-            Cull off
+            Cull front
             Ztest On
 
 
-            Stencil
+            /*Stencil
             {
                 Ref 8
                 Comp NotEqual
                 Pass Keep
                 ZFail Keep
-            }
+            }*/
 
             HLSLPROGRAM
             #pragma multi_compile_local _ _DesolveEffect
