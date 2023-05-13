@@ -19,7 +19,7 @@ Shader "Effect/SDF_Shadow"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "../../ShaderLibrary/CommonFunctions.hlsl"
+            #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
 
             struct appdata
             {

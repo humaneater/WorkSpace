@@ -20,14 +20,13 @@ Shader "Effect/SoftParticle"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "../../ShaderLibrary/CommonFunctions.hlsl"
+            #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
 
             struct appdata
             {
                 float4 vertex : POSITION;
                 float4 color : COLOR;
                 float2 uv : TEXCOORD0;
-                
             };
 
             struct v2f
@@ -36,11 +35,10 @@ Shader "Effect/SoftParticle"
                 float2 uv : TEXCOORD0;
                 float3 worldPos : TEXCOORD1;
                 float4 color : TEXCOORD2;
-                
             };
 
             sampler2D _MainTex;
-            float4 _MainTex_ST,_Color;
+            float4 _MainTex_ST, _Color;
             float _DepthMinus;
 
             v2f vert(appdata i)
@@ -57,10 +55,10 @@ Shader "Effect/SoftParticle"
                 float4 albedo = tex2D(_MainTex, i.uv);
                 float2 depthUV = i.vertex.xy / _ScreenParams.xy;
                 float viewDirZ = LinearEyeDepth(i.vertex.z, _ZBufferParams);
-                float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture,sampler_CameraDepthTexture,depthUV);
+                float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, depthUV);
                 depth = LinearEyeDepth(depth, _ZBufferParams);
-                float alpha =  saturate(abs(depth - viewDirZ)*_DepthMinus);
-                return float4(albedo.xyz * i.color * _Color , albedo.a * alpha);
+                float alpha = saturate(abs(depth - viewDirZ) * _DepthMinus);
+                return float4(albedo.xyz * i.color * _Color, albedo.a * alpha);
             }
             ENDHLSL
         }

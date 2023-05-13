@@ -37,7 +37,7 @@ Shader "HRP/Scenes/WaterPool"
             // Cull front
             HLSLPROGRAM
             #pragma multi_compile   _SCENE_GRAPHIC_LOW  _SCENE_GRAPHIC_MEDIUM _SCENE_GRAPHIC_SUPREME _SCENE_GRAPHIC_HIGH __
-            #include "../../ShaderLibrary/CommonFunctions.hlsl"
+            #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
             #pragma vertex WaterVert
             #pragma fragment WaterFrag
 
