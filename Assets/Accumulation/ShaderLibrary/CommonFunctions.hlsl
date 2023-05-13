@@ -4,7 +4,8 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
-
+#define HGetWorldNormal(v2fData) (float3(v2fData.tToW[0].z,v2fData.tToW[1].z,v2fData.tToW[2].z))
+#define HGetWorldPos(v2fData)       (float3( (v2fData).tToW[0].w, (v2fData).tToW[1].w, (v2fData).tToW[2].w ))
 
 float3 GetWorldPositionByDepth(float2 uv, float depth)
 {
@@ -33,6 +34,58 @@ float Unity_Dither_float4(float4 ScreenPosition)
     return DITHER_THRESHOLDS[index];
 }
 
+float3 NDCNormalized(float4 clip)
+{
+    float3 idx = clip.xyz / clip.w;
+    idx.xy = idx.xy * 0.5 + 0.5;
+    idx.y = 1 - idx.y;
+    //idx.z = idx.z < 0 || idx.z>1?  1 - idx.z: idx.z;
+    return idx;
+}
+
+InputData InitInputData(float3 worldPos, float3 normalWS, float3 viewDir, float3 ambient)
+{
+    InputData data = (InputData)1;
+    data.positionWS = worldPos;
+    data.normalWS = normalWS;
+    data.viewDirectionWS = normalize(viewDir);
+    data.bakedGI = ambient;
+
+    return data;
+}
+float CubemapMipmapLevel(float roughness)
+{
+    half mip = roughness * (1.7 - 0.7 * roughness);
+    mip *= UNITY_SPECCUBE_LOD_STEPS;
+    return mip;
+}
+float3 SampleEnviroment(float3 viewDir, float3 normal, float roughness, float3 worldPos)
+{
+    float3 reflects = reflect(-viewDir, normal);
+    #ifdef UNITY_SPECCUBE_BOX_PROJECTION
+    reflects = BoxProjectedCubemapDirection(reflects, worldPos, unity_SpecCube0_ProbePosition, unity_SpecCube0_BoxMin, unity_SpecCube0_BoxMax);
+    #endif
+    float mip = CubemapMipmapLevel(roughness);
+    float4 environment = SAMPLE_TEXTURECUBE_LOD(unity_SpecCube0, samplerunity_SpecCube0, reflects, mip);
+    return DecodeHDREnvironment(environment, unity_SpecCube0_HDR);
+}
+
+inline float3 BlinnPhoneSpecular(float3 specularColor, float nDotH, float gloss)
+{
+    return specularColor * pow(nDotH, exp2(gloss));
+}
+float4 DesolveColor(sampler2D noiseTex,float2 uv,float desolveValue,float4 desolveColor,float4 baseColor,float range = 0.05f)
+{
+    float desolve = tex2D(noiseTex,uv).x;
+    float cutValue = desolveValue - desolve;
+    clip(cutValue);
+    clip(desolve - 0.05);
+    if (abs(cutValue) < range)
+    {
+        baseColor = desolveColor;
+    }
+    return baseColor;
+}
 
 
 

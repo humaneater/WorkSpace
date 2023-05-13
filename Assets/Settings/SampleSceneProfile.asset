@@ -114,16 +114,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0bb42f94f5f9a2940b661c04c0c8b3a0, type: 3}
   m_Name: VolumeLightVolume
   m_EditorClassIdentifier: 
-  active: 1
+  active: 0
   mTrigger:
     m_OverrideState: 1
     m_Value: 1
-  mStep:
+  mMieStrength:
+    m_OverrideState: 1
+    m_Value: 0.129
+  mMieY:
     m_OverrideState: 1
     m_Value: 1
+  mMieScatter:
+    m_OverrideState: 1
+    m_Value: 0.188
+  mStep:
+    m_OverrideState: 1
+    m_Value: 2.35
   mSpeed:
     m_OverrideState: 1
     m_Value: 1
   mMaxDistance:
     m_OverrideState: 1
     m_Value: 20
+  mStepCount:
+    m_OverrideState: 1
+    m_Value: 12
+  mBlueValue:
+    m_OverrideState: 1
+    m_Value: 1
+  mDownSampling:
+    m_OverrideState: 1
+    m_Value: 2
