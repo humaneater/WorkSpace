@@ -128,7 +128,7 @@ Shader "PostProcess/VolumeLight"
             ztest always
             zwrite off
             HLSLPROGRAM
-            #include "../../ShaderLibrary/CommonFunctions.hlsl"
+            #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
             #pragma vertex vert
             #pragma fragment frag
 
@@ -190,7 +190,7 @@ Shader "PostProcess/VolumeLight"
             ztest always
             zwrite off
             HLSLPROGRAM
-            #include "../../ShaderLibrary/CommonFunctions.hlsl"
+            #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
             #pragma vertex vert
             #pragma fragment frag
 

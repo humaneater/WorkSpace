@@ -43,6 +43,15 @@ float3 NDCNormalized(float4 clip)
     return idx;
 }
 
+inline float3 HunpackNormal(float3 normalMap)
+{
+    float3 normalRes;
+    normalRes.xy = normalMap.xy * 2 - 1;
+    normalRes.z = sqrt(1 - saturate(dot(normalRes.xy, normalRes.xy)));
+    return normalRes;
+}
+
+
 InputData InitInputData(float3 worldPos, float3 normalWS, float3 viewDir, float3 ambient)
 {
     InputData data = (InputData)1;
