@@ -36,7 +36,7 @@ public class DiffusionScanLineFeature : ScriptableRendererFeature
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            var cmd = CommandBufferPool.Get();
+            var cmd = CommandBufferPool.Get(k_Tag);
             mMat.SetVector(position,data.DiffusionStartPosition);
             mMat.SetFloat(diffusionValue,data.DiffusionValue);
             mMat.SetTexture(diffusionTexture,data.GridTexture);
