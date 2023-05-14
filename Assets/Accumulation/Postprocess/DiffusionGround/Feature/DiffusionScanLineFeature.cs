@@ -27,11 +27,11 @@ public class DiffusionScanLineFeature : ScriptableRendererFeature
         {
         }
 
-        public void SetUp(ScriptableRenderer renderer, Material mat, RenderSettingManager.DiffusionData position)
+        public void SetUp(ScriptableRenderer renderer,  RenderSettingManager.DiffusionData mData)
         {
             _renderer = renderer;
-            data = position;
-            mMat = mat;
+            data = mData;
+            mMat = mData.Mat;
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
@@ -86,10 +86,9 @@ public class DiffusionScanLineFeature : ScriptableRendererFeature
     // This method is called when setting up the renderer once per-camera.
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
-        if (setting._material == null || RenderSettingManager.GetInstance() == null) return;
+        if ( RenderSettingManager.GetInstance() == null || RenderSettingManager.GetInstance().GetDiffusionData().Mat == null) return;
 
-        m_ScriptablePass.SetUp(renderer, setting._material,
-            RenderSettingManager.GetInstance().GetDiffusionData());
+        m_ScriptablePass.SetUp(renderer, RenderSettingManager.GetInstance().GetDiffusionData());
         renderer.EnqueuePass(m_ScriptablePass);
     }
 }

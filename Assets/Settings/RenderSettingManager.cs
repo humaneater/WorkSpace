@@ -36,13 +36,14 @@ namespace UnityEngine.Rendering
             return _diffusionData;
         }
 
-        public void SetDiffusionData(float diffusionValue,Vector3 position,Texture2D gridTexture,Color color,float angle)
+        public void SetDiffusionData(float diffusionValue,Vector3 position,Texture2D gridTexture,Color color,float angle,Material mat)
         {
             Vector4 positionA = new Vector4(position.x, position.y, position.z, angle);
             _diffusionData.DiffusionValue = diffusionValue;
             _diffusionData.DiffusionStartPosition = positionA;
             _diffusionData.GridTexture = gridTexture;
             _diffusionData.Color = color;
+            _diffusionData.Mat = mat;
         }
     }
 }

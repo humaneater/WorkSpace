@@ -20,13 +20,13 @@ public class DiffusionRenderSetting : MonoBehaviour
     void Start()
     {
         
-        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,Vector3.zero,mDiffusionTexture,color,angle * Mathf.Deg2Rad);
+        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,Vector3.zero,mDiffusionTexture,color,angle * Mathf.Deg2Rad,mMat);
     }
 
     // Update is called once per frame
     private void UpdateData()
     {
-        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,transform.position,mDiffusionTexture,color,angle* Mathf.Deg2Rad);
+        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,transform.position,mDiffusionTexture,color,angle* Mathf.Deg2Rad,mMat);
     }
 
     private void OnGUI()
