@@ -89,7 +89,8 @@ MonoBehaviour:
   - {fileID: -3141024993344057994}
   - {fileID: -1368233635188927775}
   - {fileID: -152416016446399037}
-  m_RendererFeatureMap: 768d1a1169d668d4e192d20cc20e03edc3dda1c97082e2fd
+  - {fileID: 2510208397237999177}
+  m_RendererFeatureMap: 768d1a1169d668d4e192d20cc20e03edc3dda1c97082e2fd49d692d53c0dd622
   m_UseNativeRenderPass: 0
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
@@ -127,3 +128,19 @@ MonoBehaviour:
   m_ClusteredRendering: 0
   m_TileSize: 32
   m_IntermediateTextureMode: 1
+--- !u!114 &2510208397237999177
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d39bf609328e4ec489c81d5be546bc59, type: 3}
+  m_Name: ContactShadowFeature
+  m_EditorClassIdentifier: 
+  m_Active: 1
+  setting:
+    MaxDistance: 0
+    _event: 500
