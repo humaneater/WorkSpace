@@ -39,6 +39,7 @@ float3 NDCNormalized(float4 clip)
     float3 idx = clip.xyz / clip.w;
     idx.xy = idx.xy * 0.5 + 0.5;
     idx.y = 1 - idx.y;
+    //idx.z = 1-idx.z;
     //idx.z = idx.z < 0 || idx.z>1?  1 - idx.z: idx.z;
     return idx;
 }

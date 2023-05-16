@@ -14,7 +14,7 @@ Shader "PostProcess/ContactShadow"
 
         Pass
         {
-            blend  SrcAlpha  OneMinusSrcAlpha
+            blend SrcAlpha OneMinusSrcAlpha
             ztest always
             zwrite off
             HLSLPROGRAM
@@ -52,7 +52,7 @@ Shader "PostProcess/ContactShadow"
                 return o;
             }
 
-            float GetContactShadow(float3 worldPos, float3 target, float2 uv, float stepOffset,float dither)
+            float GetContactShadow(float3 worldPos, float3 target, float2 uv, float stepOffset, float dither)
             {
                 //在clip空间操作
                 float4 targetClipPos = mul(GetWorldToHClipMatrix(), float4(target, 1));
@@ -60,14 +60,27 @@ Shader "PostProcess/ContactShadow"
                 float3 targetClipScreen = NDCNormalized(targetClipPos);
                 float3 StartClipScreen = NDCNormalized(startClipPos);
                 float3 rayStepScreen = targetClipScreen - StartClipScreen;
-               
                 //操作uv步进，在视线空间找到遮挡关系
                 float3 rayStartUVW = StartClipScreen;
+                float length1 = length(rayStepScreen.xy);
+
+                float ratio = 0.05f / max(0.1f,length1);
+                rayStepScreen = rayStepScreen * ratio;
                 float3 rayStepUVW = rayStepScreen;
+                if (StartClipScreen.z >0.1)
+                {
+                    return 0;
+                }
+                if (rayStepScreen.z <0 )
+                {
+                    return 0;
+                }
+
 
                 float step = 1.0f / 8.0f;
-                float sampleStep = step + step * stepOffset * dither;
+                float sampleStep = step + step * 1.0f * dither;
                 float hit = 0;
+                float dis = 0;
                 //return SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, StartClipScreen.xy)*100
                 for (int i = 0; i < 8; i++)
                 {
@@ -75,23 +88,25 @@ Shader "PostProcess/ContactShadow"
                     float sampleDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture,
                                                              sampleUVW.xy);
                     float depthDiff = sampleDepth - sampleUVW.z;
-                    hit += depthDiff > 0.001 ? 0.1 : 0;
+                    hit += depthDiff > 0.0f ? 1.0f : 0.01f;
+                    dis = hit == 1.0f ? depthDiff : dis;
                     sampleStep += step;
                 }
-                float res = hit > 0 ? 0.3 : 1;
-                return 1 - res;
+                float res = hit > 1.0f ? dis*50 : 0;
+                return res;
             }
-            
+
 
             float4 frag(v2f i) : SV_Target
             {
                 float dither = Unity_Dither_float4(i.vertex);
                 float2 uv = i.vertex / _ScreenParams.xy;
+
+                float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, uv);
+                float3 worldPos = GetWorldPositionByDepth(uv, depth);
+                float contactShadow = GetContactShadow(worldPos, _LightSource, uv, 2, dither);
                 
-                float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture,sampler_CameraDepthTexture,uv);
-                float3 worldPos = GetWorldPositionByDepth(uv,depth);
-                float contactShadow = GetContactShadow(worldPos,_LightSource,uv,1,dither);
-                return float4(0,0,0,contactShadow);
+                return float4(0,0,0, contactShadow);
             }
             ENDHLSL
         }
