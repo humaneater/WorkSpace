@@ -140,7 +140,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d39bf609328e4ec489c81d5be546bc59, type: 3}
   m_Name: ContactShadowFeature
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   setting:
     MaxDistance: 0
     _event: 500
