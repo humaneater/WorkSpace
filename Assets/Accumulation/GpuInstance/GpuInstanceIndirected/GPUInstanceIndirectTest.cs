@@ -33,7 +33,7 @@ public class GPUInstanceIndirectTest : MonoBehaviour
     private void Setup()
     {
         // Boundary surrounding the meshes we will be drawing.  Used for occlusion.
-        bounds = new Bounds(transform.position, Vector3.one * (range + 1));
+        bounds = new Bounds(transform.position, Vector3.one * (range + 100000));
 
         InitializeBuffers();
     }
