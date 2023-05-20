@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.UI;
 
 public class GPUInstanceIndirectTest : MonoBehaviour
 {
@@ -67,7 +69,7 @@ public class GPUInstanceIndirectTest : MonoBehaviour
 
             properties[i] = props;
         }
-
+        
         meshPropertiesBuffer = new ComputeBuffer(population, MeshProperties.Size());
         meshPropertiesBuffer.SetData(properties);
         material.SetBuffer("_Properties", meshPropertiesBuffer);
