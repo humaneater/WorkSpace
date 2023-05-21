@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5177d59c1f843a4aace4bdd987e43e5, type: 3}
   m_Name: VoluemeLightRenderPassFeature
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   m_Setting:
     m_Event: 550
 --- !u!114 &-1368233635188927775
@@ -27,7 +27,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b3d386ba5cd94485973aee1479b272e, type: 3}
   m_Name: RenderObjects
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   settings:
     passTag: RenderObjects
     Event: 300
@@ -67,7 +67,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8af6e1a0399f5724c959a251f4169b41, type: 3}
   m_Name: DiffusionScanLineFeature
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   setting:
     _event: 500
     _material: {fileID: 2100000, guid: 774f9177de2f2814db4415d75a9a444d, type: 2}
@@ -90,7 +90,8 @@ MonoBehaviour:
   - {fileID: -1368233635188927775}
   - {fileID: -152416016446399037}
   - {fileID: 2510208397237999177}
-  m_RendererFeatureMap: 768d1a1169d668d4e192d20cc20e03edc3dda1c97082e2fd49d692d53c0dd622
+  - {fileID: 3027563910072906389}
+  m_RendererFeatureMap: 768d1a1169d668d4e192d20cc20e03edc3dda1c97082e2fd49d692d53c0dd6229532b0e25511042a
   m_UseNativeRenderPass: 0
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
@@ -144,3 +145,17 @@ MonoBehaviour:
   setting:
     MaxDistance: 0
     _event: 500
+--- !u!114 &3027563910072906389
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d658f629c005c4294db2ed6023dbed, type: 3}
+  m_Name: SaveDepthFeature
+  m_EditorClassIdentifier: 
+  m_Active: 1
+  depthTex: {fileID: 8400000, guid: 166a29e081259254c94355d689d9232a, type: 2}

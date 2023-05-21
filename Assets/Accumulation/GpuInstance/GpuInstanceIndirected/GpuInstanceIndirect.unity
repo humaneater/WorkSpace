@@ -200,8 +200,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 558213740}
-  m_LocalRotation: {x: 0.2114441, y: 0.6364052, z: -0.18749003, w: 0.71772367}
-  m_LocalPosition: {x: 74.110855, y: 40.890305, z: 218.98134}
+  m_LocalRotation: {x: -0.16180395, y: -0.25526047, z: 0.04337295, w: -0.9522501}
+  m_LocalPosition: {x: 219.94475, y: 31.701736, z: 228.93788}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -434,9 +434,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   grass: {fileID: 4300000, guid: 68b72eaf32d7cc040aef1dfb054755ee, type: 3}
+  Count: 1280
+  mInstanceMat: {fileID: 2100000, guid: 31ab8f73302c43442998313c215bb092, type: 2}
   starPosition: {x: 100, y: 0, z: 100}
   endPosition: {x: 400, y: 0, z: 400}
-  mInstanceMat: {fileID: 2100000, guid: 31ab8f73302c43442998313c215bb092, type: 2}
+  CullingCS: {fileID: 7200000, guid: 118e83c1ddd377343b578692035384bb, type: 3}
 --- !u!4 &1972458227
 Transform:
   m_ObjectHideFlags: 0

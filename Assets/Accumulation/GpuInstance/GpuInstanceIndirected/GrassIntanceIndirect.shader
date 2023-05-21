@@ -2,6 +2,7 @@ Shader "Custom/GrassInstanceIndirect" {
      Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _Color ("color",COLOR) = (1,1,1,1)
     }
     SubShader {
         Tags { "RenderType" = "Opaque" }
@@ -35,6 +36,7 @@ Shader "Custom/GrassInstanceIndirect" {
             };
 
             StructuredBuffer<MeshProperties> _PropertisMatrix;
+            float4 _Color;
 
             v2f vert(appdata_t i) {
                 v2f o;
@@ -50,7 +52,7 @@ Shader "Custom/GrassInstanceIndirect" {
 
             float4 frag(v2f i) : SV_Target {
                 float NOL = dot(i.normal,_MainLightPosition) * 0.5f + 0.5f;
-                return i.color ;
+                return i.color * _Color ;
             }
 
             ENDHLSL

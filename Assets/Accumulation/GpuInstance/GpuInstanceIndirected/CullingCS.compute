@@ -1,0 +1,53 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+struct MeshProperties {
+    float4x4 mat;
+    float4x4 mat_I_M;
+    float4 color;
+};
+
+StructuredBuffer<MeshProperties> _InputMatrix;
+AppendStructuredBuffer<MeshProperties> _PropertisMatrix;
+float4x4 _WorldToCameraMatrix;
+Texture2D<float4> _CameraDepthTexture;
+SAMPLER(sampler_CameraDepthTexture);
+
+
+bool IsInClipSpace(float4 clipPosition)
+{ 
+    #if  UNITY_REVERSED_Z
+        return clipPosition.x > -clipPosition.w && clipPosition.x < clipPosition.w&&
+        clipPosition.y > -clipPosition.w && clipPosition.y < clipPosition.w&&
+        clipPosition.z > -clipPosition.w && clipPosition.z < clipPosition.w;
+    #else
+        return clipPosition.x > -clipPosition.w && clipPosition.x < clipPosition.w&&
+        clipPosition.y > -clipPosition.w && clipPosition.y < clipPosition.w&&
+        clipPosition.z > 0 && clipPosition.z < clipPosition.w;
+    #endif
+    return false;
+}
+[numthreads(640,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    float4 worldPos = mul(_InputMatrix[id.x].mat,float4(0,0,0,1));
+    float4 clipSpacePos = mul(_WorldToCameraMatrix,worldPos);
+    if (!IsInClipSpace(clipSpacePos))
+    {
+        return;
+    }
+    clipSpacePos.xyz /=clipSpacePos.w;
+    clipSpacePos.xy = clipSpacePos.xy * 0.5f+0.5f;
+    float depth = _CameraDepthTexture.SampleLevel(sampler_CameraDepthTexture,clipSpacePos.xy,0);
+    if (depth > clipSpacePos.z)
+    {
+        return;
+    }
+    
+
+        _PropertisMatrix.Append(_InputMatrix[id.x]);
+    
+   
+}
