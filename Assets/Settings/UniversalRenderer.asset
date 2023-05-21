@@ -158,4 +158,4 @@ MonoBehaviour:
   m_Name: SaveDepthFeature
   m_EditorClassIdentifier: 
   m_Active: 1
-  depthTex: {fileID: 8400000, guid: 166a29e081259254c94355d689d9232a, type: 2}
+  depthTex: {fileID: 8400000, guid: 2a410698723f95b45a0fa8ac1a8e2a39, type: 2}
