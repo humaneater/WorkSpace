@@ -1,27 +1,27 @@
+using System;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using Color = UnityEngine.Color;
 
 public class SaveDepthFeature : ScriptableRendererFeature
 {
     class SaveDepthRenderPass : ScriptableRenderPass
     {
-
         private RenderTexture mDepthRT;
         private ScriptableRenderer _renderer;
         private int CameraDepthTextureID = Shader.PropertyToID("_CameraDepthTexture");
 
-        
-        
+
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
         }
 
-        public void Setup(RenderTexture depthRT,ScriptableRenderer renderer)
+        public void Setup(RenderTexture depthRT, ScriptableRenderer renderer)
         {
             mDepthRT = depthRT;
             _renderer = renderer;
-
         }
 
 
@@ -30,10 +30,14 @@ public class SaveDepthFeature : ScriptableRendererFeature
             if (renderingData.cameraData.camera.tag == "MainCamera")
             {
                 var depthTexture = renderingData.cameraData.camera;
-            var cmd = CommandBufferPool.Get();
-            cmd.Blit(Shader.GetGlobalTexture(CameraDepthTextureID),mDepthRT);
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
+                var cmd = CommandBufferPool.Get();
+                cmd.SetRenderTarget(mDepthRT);
+                cmd.ClearRenderTarget(true,true,Color.black,float.MinValue);
+                context.ExecuteCommandBuffer(cmd);
+                cmd.Clear();
+                cmd.Blit(_renderer.cameraDepthTarget, mDepthRT);
+                context.ExecuteCommandBuffer(cmd);
+                CommandBufferPool.Release(cmd);
             }
         }
 
@@ -59,12 +63,10 @@ public class SaveDepthFeature : ScriptableRendererFeature
     // This method is called when setting up the renderer once per-camera.
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
-        if (depthTex != null)
+        if (!renderingData.cameraData.isSceneViewCamera)
         {
-            m_ScriptablePass.Setup(depthTex,renderer);
-        renderer.EnqueuePass(m_ScriptablePass);
+            m_ScriptablePass.Setup(depthTex, renderer);
+            renderer.EnqueuePass(m_ScriptablePass);
         }
     }
 }
-
-

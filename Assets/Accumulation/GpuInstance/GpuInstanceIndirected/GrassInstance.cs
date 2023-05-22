@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing.Drawing2D;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -27,8 +26,7 @@ public class GrassInstance : MonoBehaviour
     private ComputeBuffer meshPropertiesBuffer;
     private ComputeBuffer argsBuffer;
     private ComputeBuffer CullingResultBuffer;
-    [SerializeField]
-    private ComputeShader CullingCS;
+    [SerializeField] private ComputeShader CullingCS;
 
     private static readonly string InstanceProperties = "_PropertisMatrix";
     private LayerMask layer;
@@ -130,8 +128,8 @@ public class GrassInstance : MonoBehaviour
 
     private void CullByProjector()
     {
-        CullingResultBuffer ??= new ComputeBuffer(drawMatrix.Count, InstanceMatrix.Size(),ComputeBufferType.Append);
-        Matrix4x4 P = GL.GetGPUProjectionMatrix(mainCamera.projectionMatrix,false);
+        CullingResultBuffer ??= new ComputeBuffer(drawMatrix.Count, InstanceMatrix.Size(), ComputeBufferType.Append);
+        Matrix4x4 P = GL.GetGPUProjectionMatrix(mainCamera.projectionMatrix, false);
         Matrix4x4 V = mainCamera.worldToCameraMatrix;
         Matrix4x4 VP = P * V;
         //准备cs
@@ -140,17 +138,37 @@ public class GrassInstance : MonoBehaviour
             int kernel = CullingCS.FindKernel(m_Kernel);
             CullingCS.SetBuffer(kernel, CSInputMat, meshPropertiesBuffer);
             CullingResultBuffer.SetCounterValue(0);
-            CullingCS.SetBuffer(kernel,InstanceProperties,CullingResultBuffer);
+            CullingCS.SetBuffer(kernel, InstanceProperties, CullingResultBuffer);
             CullingCS.SetMatrix(MVMatrix, VP);
             //获取深度图
-            CullingCS.SetTexture(kernel,CameraDepthTextureID,depthRT);
+            CullingCS.SetTexture(kernel, CameraDepthTextureID, depthRT);
             CullingCS.Dispatch(kernel, (meshPropertiesBuffer.count / 640), 1, 1);
-            ComputeBuffer.CopyCount(CullingResultBuffer,argsBuffer,sizeof(uint));
+            ComputeBuffer.CopyCount(CullingResultBuffer, argsBuffer, sizeof(uint));
             mInstanceMat.SetBuffer(InstanceProperties, CullingResultBuffer);
-            int[] count = new int[5] { 0,0,0,0,0 };
+            int[] count = new int[5] { 0, 0, 0, 0, 0 };
             argsBuffer.GetData(count);
             Debug.Log("数量:" + count[1]);
         }
+    }
+
+    public Material BiltMaterial;
+
+    private void GetDepthTexture()
+    {
+        RenderTexture depthTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.RFloat);
+        RenderTexture targetTexture = new RenderTexture(Screen.width, Screen.height, 0);
+
+        // 设置相机的目标渲染纹理为 targetTexture
+        mainCamera.targetTexture = targetTexture;
+
+        // 使用 Graphics.Blit 将深度纹理拷贝到 depthTexture
+        mainCamera.depthTextureMode = DepthTextureMode.Depth;
+        Graphics.Blit(null, depthTexture);
+        
+        // 进行深度纹理的操作，比如将其作为输入进行后处理
+
+        // 恢复相机的目标渲染纹理为 null
+        mainCamera.targetTexture = null;
     }
 
     private void Update()
@@ -162,24 +180,27 @@ public class GrassInstance : MonoBehaviour
     private void OnDisable()
     {
         if (meshPropertiesBuffer != null)
-        { 
+        {
             meshPropertiesBuffer.Release();
             meshPropertiesBuffer.Dispose();
         }
+
         meshPropertiesBuffer = null;
-        
+
         if (argsBuffer != null)
         {
             argsBuffer.Release();
             argsBuffer.Dispose();
         }
+
         argsBuffer = null;
-        
+
         if (CullingResultBuffer != null)
         {
             CullingResultBuffer.Release();
             CullingResultBuffer.Dispose();
         }
+
         CullingResultBuffer = null;
     }
 
