@@ -41,7 +41,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     clipSpacePos.xyz /=clipSpacePos.w;
     clipSpacePos.xy = clipSpacePos.xy * 0.5f+0.5f;
     float depth = _CameraDepthTexture.SampleLevel(sampler_CameraDepthTexture,clipSpacePos.xy,0);
-    if (depth > clipSpacePos.z)
+    if (depth - clipSpacePos.z > 0.001f)
     {
         return;
     }

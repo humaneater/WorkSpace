@@ -12,16 +12,19 @@ public class SaveDepthFeature : ScriptableRendererFeature
         private RenderTexture mDepthRT;
         private ScriptableRenderer _renderer;
         private int CameraDepthTextureID = Shader.PropertyToID("_CameraDepthTexture");
+        private int m_MainTex = Shader.PropertyToID("_MainTex");
+        private Material m_copyMat;
 
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
         }
 
-        public void Setup(RenderTexture depthRT, ScriptableRenderer renderer)
+        public void Setup(RenderTexture depthRT, ScriptableRenderer renderer,Material material)
         {
             mDepthRT = depthRT;
             _renderer = renderer;
+            m_copyMat = material;
         }
 
 
@@ -29,13 +32,15 @@ public class SaveDepthFeature : ScriptableRendererFeature
         {
             if (renderingData.cameraData.camera.tag == "MainCamera")
             {
-                var depthTexture = renderingData.cameraData.camera;
                 var cmd = CommandBufferPool.Get();
                 cmd.SetRenderTarget(mDepthRT);
-                cmd.ClearRenderTarget(true,true,Color.black,float.MinValue);
+                cmd.ClearRenderTarget(true, true, Color.black, float.MinValue);
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
-                cmd.Blit(_renderer.cameraDepthTarget, mDepthRT);
+                cmd.SetGlobalTexture(m_MainTex,_renderer.cameraDepthTarget);
+                cmd.DrawMesh(RenderingUtils.fullscreenMesh,Matrix4x4.identity, m_copyMat,0,0);
+                //TODO:制作mip
+                cmd.SetRenderTarget(renderingData.cameraData.targetTexture);
                 context.ExecuteCommandBuffer(cmd);
                 CommandBufferPool.Release(cmd);
             }
@@ -49,6 +54,9 @@ public class SaveDepthFeature : ScriptableRendererFeature
 
     SaveDepthRenderPass m_ScriptablePass;
     public RenderTexture depthTex;
+    private Material CopyMaterial;
+    private Shader CopyShader;
+    private static readonly string CopyDepthString = "Util/CopyDepthMip";
 
     /// <inheritdoc/>
     public override void Create()
@@ -57,15 +65,33 @@ public class SaveDepthFeature : ScriptableRendererFeature
 
         // Configures where the render pass should be injected.
         m_ScriptablePass.renderPassEvent = RenderPassEvent.AfterRenderingTransparents;
+        GetMaterial();
+    }
+
+    private bool GetMaterial()
+    {
+        if (CopyMaterial != null) return true;
+        if (CopyShader == null)
+        {
+            CopyShader = Shader.Find(CopyDepthString);
+            if (CopyShader == null)
+            {
+                return false;
+            }
+        }
+
+        CopyMaterial = CoreUtils.CreateEngineMaterial(CopyShader);
+
+        return true;
     }
 
     // Here you can inject one or multiple render passes in the renderer.
     // This method is called when setting up the renderer once per-camera.
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
-        if (!renderingData.cameraData.isSceneViewCamera)
+        if (depthTex != null && !renderingData.cameraData.isSceneViewCamera)
         {
-            m_ScriptablePass.Setup(depthTex, renderer);
+            m_ScriptablePass.Setup(depthTex, renderer,CopyMaterial);
             renderer.EnqueuePass(m_ScriptablePass);
         }
     }

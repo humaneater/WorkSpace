@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5177d59c1f843a4aace4bdd987e43e5, type: 3}
   m_Name: VoluemeLightRenderPassFeature
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
   m_Setting:
     m_Event: 550
 --- !u!114 &-1368233635188927775
@@ -27,7 +27,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b3d386ba5cd94485973aee1479b272e, type: 3}
   m_Name: RenderObjects
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
   settings:
     passTag: RenderObjects
     Event: 300
@@ -67,7 +67,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8af6e1a0399f5724c959a251f4169b41, type: 3}
   m_Name: DiffusionScanLineFeature
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
   setting:
     _event: 500
     _material: {fileID: 2100000, guid: 774f9177de2f2814db4415d75a9a444d, type: 2}
@@ -141,7 +141,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d39bf609328e4ec489c81d5be546bc59, type: 3}
   m_Name: ContactShadowFeature
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
   setting:
     MaxDistance: 0
     _event: 500
