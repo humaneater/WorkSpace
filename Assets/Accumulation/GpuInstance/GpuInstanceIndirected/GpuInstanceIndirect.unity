@@ -173,7 +173,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
+  near clip plane: 0.03
   far clip plane: 1000
   field of view: 60
   orthographic: 0
@@ -440,7 +440,6 @@ MonoBehaviour:
   endPosition: {x: 400, y: 0, z: 400}
   CullingCS: {fileID: 7200000, guid: 118e83c1ddd377343b578692035384bb, type: 3}
   depthRT: {fileID: 8400000, guid: 2a410698723f95b45a0fa8ac1a8e2a39, type: 2}
-  BiltMaterial: {fileID: 0}
 --- !u!4 &1972458227
 Transform:
   m_ObjectHideFlags: 0

@@ -124,6 +124,8 @@ public class GrassInstance : MonoBehaviour
     private static readonly int MVMatrix = Shader.PropertyToID("_WorldToCameraMatrix");
     private RenderTargetHandle depthHandle;
     private int CameraDepthTextureID = Shader.PropertyToID("_CameraDepthTexture");
+    private int depthTextureSizeX = Shader.PropertyToID("depthTextureSizeX");
+    private int depthTextureSizeY = Shader.PropertyToID("depthTextureSizeY");
     public RenderTexture depthRT;
 
     private void CullByProjector()
@@ -141,7 +143,10 @@ public class GrassInstance : MonoBehaviour
             CullingCS.SetBuffer(kernel, InstanceProperties, CullingResultBuffer);
             CullingCS.SetMatrix(MVMatrix, VP);
             //获取深度图
+            
             CullingCS.SetTexture(kernel, CameraDepthTextureID, depthRT);
+            CullingCS.SetInt(depthTextureSizeX,depthRT.width);
+            CullingCS.SetInt(depthTextureSizeY,depthRT.height);
             CullingCS.Dispatch(kernel, (meshPropertiesBuffer.count / 640), 1, 1);
             ComputeBuffer.CopyCount(CullingResultBuffer, argsBuffer, sizeof(uint));
             mInstanceMat.SetBuffer(InstanceProperties, CullingResultBuffer);
@@ -151,25 +156,7 @@ public class GrassInstance : MonoBehaviour
         }
     }
 
-    public Material BiltMaterial;
-
-    private void GetDepthTexture()
-    {
-        RenderTexture depthTexture = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.RFloat);
-        RenderTexture targetTexture = new RenderTexture(Screen.width, Screen.height, 0);
-
-        // 设置相机的目标渲染纹理为 targetTexture
-        mainCamera.targetTexture = targetTexture;
-
-        // 使用 Graphics.Blit 将深度纹理拷贝到 depthTexture
-        mainCamera.depthTextureMode = DepthTextureMode.Depth;
-        Graphics.Blit(null, depthTexture);
-        
-        // 进行深度纹理的操作，比如将其作为输入进行后处理
-
-        // 恢复相机的目标渲染纹理为 null
-        mainCamera.targetTexture = null;
-    }
+  
 
     private void Update()
     {
