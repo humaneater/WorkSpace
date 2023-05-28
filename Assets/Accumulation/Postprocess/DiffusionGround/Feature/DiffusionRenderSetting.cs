@@ -7,6 +7,7 @@ using UnityEngine.Rendering.Universal;
 
 public class DiffusionRenderSetting : MonoBehaviour
 {
+    [SerializeField] private bool isOpen;
     [SerializeField] private float mDiffusionValue;
     [SerializeField] private Texture2D mDiffusionTexture;
     [SerializeField] [Range(0,10)]private float timePassBy;
@@ -20,13 +21,13 @@ public class DiffusionRenderSetting : MonoBehaviour
     void Start()
     {
         
-        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,Vector3.zero,mDiffusionTexture,color,angle * Mathf.Deg2Rad,mMat);
+        RenderSettingManager.GetInstance().SetDiffusionData(isOpen,mDiffusionValue,Vector3.zero,mDiffusionTexture,color,angle * Mathf.Deg2Rad,mMat);
     }
 
     // Update is called once per frame
     private void UpdateData()
     {
-        RenderSettingManager.GetInstance().SetDiffusionData(mDiffusionValue,transform.position,mDiffusionTexture,color,angle* Mathf.Deg2Rad,mMat);
+        RenderSettingManager.GetInstance().SetDiffusionData(isOpen,mDiffusionValue,transform.position,mDiffusionTexture,color,angle* Mathf.Deg2Rad,mMat);
     }
 
     private void OnGUI()

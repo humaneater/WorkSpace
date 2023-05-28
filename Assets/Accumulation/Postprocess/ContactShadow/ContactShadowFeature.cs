@@ -91,7 +91,7 @@ public class ContactShadowFeature : ScriptableRendererFeature
             return;
         }
 
-        if (RenderSettingManager.GetInstance() == null) return;
+        if (!RenderSettingManager.GetInstance().GetContactShadow().isOpen) return;
         
         m_ScriptablePass.SetUp(renderer,mMat,RenderSettingManager.GetInstance().GetContactShadow());
         renderer.EnqueuePass(m_ScriptablePass);
