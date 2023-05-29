@@ -34,7 +34,7 @@ public class AtmosphericScattingGenerate : MonoBehaviour
 
     private void InitData()
     {
-        RenderTextureDescriptor descriptor = new RenderTextureDescriptor(256, 256, RenderTextureFormat.RGB111110Float);
+        RenderTextureDescriptor descriptor = new RenderTextureDescriptor(256, 256, RenderTextureFormat.ARGB32);
         descriptor.enableRandomWrite = true;
         TransparencyLUT = new RenderTexture(descriptor);
         
