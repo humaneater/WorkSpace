@@ -1,9 +1,15 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel TransparencyLUTPass
+#pragma kernel TransmittanceLUTPass
+#pragma kernel PrecomputeScattering
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-// Create a RenderTexture with enableRandomWrite flag and set it
-// with cs.SetTexture
-RWTexture2D<float4> _TransparencyLUT;
+RWTexture2D<float4> _TransmittanceLUT;
+SAMPLER(sampler_TransmittanceLUT);
+float2 _TransmittanceLUT_Size;
+RWTexture2D<float4> _PrecomputeScatteringLUTID;
+SAMPLER(sampler_PrecomputeScatteringLUTID);
+
+float2 _PrecomputeScatteringLUTID_Size;
 float _GasDensity, _AtmosphereTop, _PlanetRadius;
 int _SampleCount;
 const float3 kBetaR = float3(5.802f, 13.558f, 33.100f) * 1e-3; // Rayleigh scattering coeffcient
@@ -12,6 +18,18 @@ const float3 kBetaOzone = float3(0.000650, 0.001881, 0.000085); // absorption_ex
 const float kHeightR = 8.0; // scale height for rayleigh 
 const float kHeightM = 1.2; // scale height for mie
 
+struct AtmosphereParameter
+{
+    float3 top_radius;
+    float3 bottom_radius;
+    float3 rayleigh_scattering;
+    float3 mie_scattering;
+    float3 mie_extinction;
+    float3 absorption_extinction;
+    float rayleigh_density;
+    float mie_density;
+    float sun_angular_radius;
+};
 
 //utils
 float ClampDistance(float d)
@@ -24,30 +42,72 @@ float ClampCosine(float mu)
     return clamp(mu, -1.0, 1.0);
 }
 
-float ClampRadius(float r)
+float ClampRadius(AtmosphereParameter atmosphere, float r)
 {
-    return clamp(r, _PlanetRadius, _AtmosphereTop);
+    return clamp(r, atmosphere.bottom_radius, atmosphere.top_radius);
 }
 
-float SafeSqrt(float a)
+float GetProfileDensity(float density, float r)
 {
-    return sqrt(max(a, 0.0));
+    return clamp(exp(-(r) / density), 0.0, 1.0);
 }
 
-//根据这个反退出来的
-/* Length H = sqrt(atmosphere.top_radius * atmosphere.top_radius -
-atmosphere.bottom_radius * atmosphere.bottom_radius);
-// Distance to the horizon.
-Length rho =
-    SafeSqrt(r * r - atmosphere.bottom_radius * atmosphere.bottom_radius);
-// Distance to the top atmosphere boundary for the ray (r,mu), and its minimum
-  // and maximum values over all mu - obtained for (r,1) and (r,mu_horizon).
-Length d = DistanceToTopAtmosphereBoundary(atmosphere, r, mu);
-Length d_min = atmosphere.top_radius - r;
-Length d_max = rho + H;
-Number x_mu = (d - d_min) / (d_max - d_min);
-Number x_r = rho / H
-*/
+float GetTextureCoordFromUnitRange(float x, float texture_size)
+{
+    return 0.5 / float(texture_size) + x * (1.0 - 1.0 / float(texture_size));
+}
+
+float GetUnitRangeFromTextureCoord(float u, float texture_size)
+{
+    return (u - 0.5 / float(texture_size)) / (1.0 - 1.0 / float(texture_size));
+}
+
+float DistanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere, float r, float mu)
+{
+    //推一下：r == 高度  mu == theta角
+    //求距离D，则 需要知道坐标系下 D的终点i的xy坐标
+    //x: D * 根号1-cosmu^2, y : r+cosmu*D
+    //D^2 * (1-cos^2) + r^2+ 2rCosmuD + cosmu * D ^2
+    //简化如下 R^2 = D^2 + 2HCosmu * D + H^2
+    // 则简化为以下形式:(D+HCosmu)^2 = R^2-H^2+H^2*cosmu^2
+    //大概就是 (x + ab)^2 = c^2 + a^2*(b^2 - 1);
+    float discriminant = r * r * (mu * mu - 1.0) + atmosphere.top_radius * atmosphere.top_radius;
+    return ClampDistance(-r * mu + SafeSqrt(discriminant));
+}
+
+float DistanceToBottomAtmosphereBoundary(AtmosphereParameter atmosphere, float r, float mu)
+{
+    float discriminant = r * r * (mu * mu - 1.0) + atmosphere.bottom_radius * atmosphere.bottom_radius;
+    return ClampDistance(-r * mu - SafeSqrt(discriminant));
+}
+
+bool RayIntersectsGround(AtmosphereParameter atmosphere, float r, float mu)
+{
+    return mu < 0.0f && r * r * (mu * mu - 1.0f) + atmosphere.bottom_radius * atmosphere.bottom_radius >= 0.0f;
+}
+
+
+float2 GetTransmittanceTextureUvFromRMu(AtmosphereParameter atmosphere,
+                                        float r, float mu)
+{
+    // Distance to top atmosphere boundary for a horizontal ray at ground level.
+    float H = sqrt(atmosphere.top_radius * atmosphere.top_radius -
+        atmosphere.bottom_radius * atmosphere.bottom_radius);
+    // Distance to the horizon.
+    float rho =
+        SafeSqrt(r * r - atmosphere.bottom_radius * atmosphere.bottom_radius);
+    // Distance to the top atmosphere boundary for the ray (r,mu), and its minimum
+    // and maximum values over all mu - obtained for (r,1) and (r,mu_horizon).
+    float d = DistanceToTopAtmosphereBoundary(atmosphere, r, mu);
+    float d_min = atmosphere.top_radius - r;
+    float d_max = rho + H;
+    float x_mu = (d - d_min) / (d_max - d_min);
+    float x_r = rho / H;
+    return float2(GetTextureCoordFromUnitRange(x_mu, _TransmittanceLUT_Size.x),
+                  GetTextureCoordFromUnitRange(x_r, _TransmittanceLUT_Size.y));
+}
+
+//根据上边这个反退出来的
 void GetHeightAndCosTheta(in float2 uv, out float height, out float cosT)
 {
     //切线长度
@@ -58,41 +118,17 @@ void GetHeightAndCosTheta(in float2 uv, out float height, out float cosT)
     float rho = H * x_r;
     height = sqrt(rho * rho + _PlanetRadius * _PlanetRadius);
     float d_min = _AtmosphereTop - height;
-    
     float d_max = rho + H;
     float d = d_min + x_mu * (d_max - d_min);
+    //根据d2+2rμd+r2 = rmax2推出mu
     cosT = d == 0.0 ? float(1.0) : (H * H - rho * rho - d * d) / (2.0 * height * d);
     cosT = ClampCosine(cosT);
 }
-void GetRMuFromTransmittanceTextureUv_original08(in float2 uv, out float r, out float mu) {
-    mu = uv.x;
-    mu = -0.15 + tan(1.5 * mu) / tan(1.5) * (1.0 + 0.15);
-    r = _PlanetRadius + uv.y * (_AtmosphereTop - _PlanetRadius);
-}
-
-float DistanceToTopAtmosphereBoundary(float r, float mu)
-{
-    //推一下：r == 高度  mu == theta角
-    //求距离D，则 需要知道坐标系下 D的终点i的xy坐标
-    //x: D * 根号1-cosmu^2, y : r+cosmu*D
-    //D^2 * (1-cos^2) + r^2+ 2rCosmuD + cosmu * D ^2
-    //简化如下 R^2 = D^2 + 2HCosmu * D + H^2
-    // 则简化为以下形式:(D+HCosmu)^2 = R^2-H^2+H^2*cosmu^2
-    //大概就是 (x + ab)^2 = c^2 + a^2*(b^2 - 1);
-    float discriminant = r * r * (mu * mu - 1.0) + _AtmosphereTop * _AtmosphereTop;
-    return ClampDistance(-r * mu + SafeSqrt(discriminant));
-}
-
-bool RayIntersectsGround(float r, float mu)
-{
-    return mu < 0.0f && r * r * (mu * mu - 1.0f) +
-        _PlanetRadius * _PlanetRadius >= 0.0f;
-}
 
 // total optical length of rayleigh and mie
-float ComputeOpticalLengthToTopAtmosphereBoundary(float h_scale, float r, float mu)
+float ComputeOpticalLengthToTopAtmosphereBoundary(AtmosphereParameter atmosphere, float h_scale, float r, float mu)
 {
-    float dx = DistanceToTopAtmosphereBoundary(r, mu) / float(_SampleCount);
+    float dx = DistanceToTopAtmosphereBoundary(atmosphere, r, mu) / float(_SampleCount);
     float result = 0.0;
     for (int i = 0; i <= _SampleCount; ++i)
     {
@@ -101,16 +137,16 @@ float ComputeOpticalLengthToTopAtmosphereBoundary(float h_scale, float r, float 
         float r_i = sqrt(d_i * d_i + 2.0 * r * mu * d_i + r * r);
         // Number density at the current sample point (divided by the number density
         // at the bottom of the atmosphere, yielding a dimensionless number).
-        float y_i = clamp(exp(-(r_i - _PlanetRadius) / h_scale), 0.0, 1.0);
+        float y_i = GetProfileDensity(h_scale, r_i - atmosphere.bottom_radius);
         result += y_i * dx;
     }
     return result;
 }
 
 // total optical length of Ozone
-float ComputeOpticalLengthToTopAtmosphereBoundary_O3(float r, float mu)
+float ComputeOpticalLengthToTopAtmosphereBoundary_O3(AtmosphereParameter atmosphere, float r, float mu)
 {
-    float dx = DistanceToTopAtmosphereBoundary(r, mu) / float(_SampleCount);
+    float dx = DistanceToTopAtmosphereBoundary(atmosphere, r, mu) / float(_SampleCount);
     float result = 0.0;
     for (int i = 0; i <= _SampleCount; ++i)
     {
@@ -128,27 +164,148 @@ float ComputeOpticalLengthToTopAtmosphereBoundary_O3(float r, float mu)
     return result;
 }
 
-float3 ComputeTransmittanceToTopAtmosphereBoundary(float r, float mu)
+float3 ComputeTransmittanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere, float r, float mu)
 {
-    float3 attenuation_rayleigh = float3(5.802f, 13.558f, 33.100f) * 1e-3 *
-        ComputeOpticalLengthToTopAtmosphereBoundary(8.0, r, mu);
-    float3 attenuation_mie = float3(0.0044f, 0.0044f, 0.0044f) *
-        ComputeOpticalLengthToTopAtmosphereBoundary(1.2, r, mu);
-    float3 kBetaOzone = float3(0.000650, 0.001881, 0.000085) * ComputeOpticalLengthToTopAtmosphereBoundary_O3( r, mu);
+    float3 attenuation_rayleigh = atmosphere.rayleigh_scattering * ComputeOpticalLengthToTopAtmosphereBoundary(
+        atmosphere, atmosphere.rayleigh_density, r, mu);
+    float3 attenuation_mie = atmosphere.mie_extinction * ComputeOpticalLengthToTopAtmosphereBoundary(
+        atmosphere, atmosphere.mie_density, r, mu);
+    float3 kBetaOzone = atmosphere.absorption_extinction * ComputeOpticalLengthToTopAtmosphereBoundary_O3(
+        atmosphere, r, mu);
     float3 attenuation_total = attenuation_rayleigh + attenuation_mie + kBetaOzone;
     return exp(-attenuation_total);
 }
 
-
-//通透度的lut，cosθ的一个预积分，试试看
 [numthreads(8,8,1)]
-void TransparencyLUTPass(uint3 id : SV_DispatchThreadID)
+void TransmittanceLUTPass(uint3 id : SV_DispatchThreadID)
 {
     float2 uv = id.xy / float2(256, 256);
-
+    AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+    atmosphere.bottom_radius = _PlanetRadius;
+    atmosphere.top_radius = _AtmosphereTop;
+    atmosphere.rayleigh_density = 8.0;
+    atmosphere.mie_density = 1.2;
+    atmosphere.rayleigh_scattering = float3(5.802f, 13.558f, 33.100f) * 1e-3;
+    atmosphere.mie_extinction = float3(0.0044f, 0.0044f, 0.0044f);
+    atmosphere.absorption_extinction = float3(0.000650, 0.001881, 0.000085);
 
     float height, cosT;
     GetHeightAndCosTheta(uv, height, cosT);
-    float3 col = ComputeTransmittanceToTopAtmosphereBoundary(height, cosT);
-    _TransparencyLUT[id.xy] = float4(col, 1);
+    float3 col = ComputeTransmittanceToTopAtmosphereBoundary(atmosphere, height, cosT);
+    _TransmittanceLUT[id.xy] = float4(col, 1);
+}
+
+float3 GetTransmittanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere,Texture2D<float4> transmittance_texture,float r, float mu)
+{
+    float2 uv = GetTransmittanceTextureUvFromRMu(atmosphere, r, mu);
+    return float3(transmittance_texture.Sample(sampler_TransmittanceLUT, uv).xyz);
+}
+
+    /*r=∥op∥    d=∥pq∥      μ=(op⋅pq)/rd    μs=(op⋅ωs)/r    ν=(pq⋅ωs)/d*/
+float3 GetTransmittance(AtmosphereParameter atmosphere, Texture2D<float4> transmittance_texture, float r, float mu,
+                        float d, bool ray_r_mu_intersects_ground)
+{
+    float r_d = ClampRadius(atmosphere, sqrt(d * d + 2.0 * r * mu * d + r * r));
+    float mu_d = ClampCosine((r * mu + d) / r_d);
+    if (ray_r_mu_intersects_ground)
+    {
+        return min(GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r_d, -mu_d) /
+                   GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, -mu), 1.0f);
+    }
+    else
+    {
+        return min(GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, mu) /
+                   GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r_d, mu_d), 1.0f);
+    }
+}
+
+float3 GetTransmittanceToSun(AtmosphereParameter atmosphere, Texture2D<float4> transmittance_texture, float r,
+                             float mu_s)
+{
+    float sin_theta_h = atmosphere.bottom_radius / r;
+    float cos_theta_h = -sqrt(max(1.0 - sin_theta_h * sin_theta_h, 0.0));
+    return GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, mu_s) * smoothstep(
+        -sin_theta_h * DegToRad(atmosphere.sun_angular_radius), sin_theta_h * DegToRad(atmosphere.sun_angular_radius),
+        mu_s - cos_theta_h);
+}
+
+
+void ComputeSingleScatteringIntegrand(AtmosphereParameter atmosphere, Texture2D<float4> transmittance_texture, float r,
+                                      float mu, float mu_s, float nu, float d, bool ray_r_mu_intersects_ground,
+                                      out float3 rayleigh, out float3 mie)
+{
+    float r_d = ClampRadius(atmosphere, sqrt(d * d + 2.0 * r * mu * d + r * r));
+    float mu_s_d = ClampCosine((r * mu_s + d * nu) / r_d);
+    float transmittance = GetTransmittance(atmosphere, transmittance_texture, r, mu, d, ray_r_mu_intersects_ground) *
+        GetTransmittanceToSun(atmosphere, transmittance_texture, r_d, mu_s_d);
+    rayleigh = transmittance * GetProfileDensity(atmosphere.rayleigh_density, r_d - atmosphere.bottom_radius);
+    mie = transmittance * GetProfileDensity(atmosphere.mie_density, r_d - atmosphere.bottom_radius);
+}
+
+float DistanceToNearestAtmosphereBoundary(AtmosphereParameter atmosphere, float r, float mu,
+                                          bool ray_r_mu_intersects_ground)
+{
+    if (ray_r_mu_intersects_ground)
+    {
+        return DistanceToBottomAtmosphereBoundary(atmosphere, r, mu);
+    }
+    else
+    {
+        return DistanceToTopAtmosphereBoundary(atmosphere, r, mu);
+    }
+}
+
+void ComputeSingleScattering(AtmosphereParameter atmosphere, Texture2D<float4> transmittance_texture, float r, float mu,
+                             float mu_s, float nu, bool ray_r_mu_intersects_ground, out float3 rayleigh, out float3 mie)
+{
+    // Number of intervals for the numerical integration.
+    const int SAMPLE_COUNT = 50;
+    // The integration step, i.e. the length of each integration interval.
+    float dx =
+        DistanceToNearestAtmosphereBoundary(atmosphere, r, mu,
+                                            ray_r_mu_intersects_ground) / float(SAMPLE_COUNT);
+    // Integration loop.
+    float3 rayleigh_sum = 0.0;
+    float3 mie_sum = 0.0;
+    for (int i = 0; i <= SAMPLE_COUNT; ++i)
+    {
+        float d_i = float(i) * dx;
+        // The Rayleigh and Mie single scattering at the current sample point.
+        float3 rayleigh_i;
+        float3 mie_i;
+        ComputeSingleScatteringIntegrand(atmosphere, transmittance_texture,r, mu, mu_s, nu, d_i, ray_r_mu_intersects_ground, rayleigh_i,mie_i);
+        // Sample weight (from the trapezoidal rule).
+        float weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
+        rayleigh_sum += rayleigh_i * weight_i;
+        mie_sum += mie_i * weight_i;
+    }
+    rayleigh = rayleigh_sum * dx * /*atmosphere.solar_irradiance **/ atmosphere.rayleigh_scattering;
+    mie = mie_sum * dx * /*atmosphere.solar_irradiance **/ atmosphere.mie_scattering;
+}
+
+float RayleighPhaseFunction(float nu)
+{
+    float k = 3.0 / (16.0 * PI );
+    return k * (1.0 + nu * nu);
+}
+
+float MiePhaseFunction(float g, float nu)
+{
+    float k = 3.0 / (8.0 * PI ) * (1.0 - g * g) / (2.0 + g * g);
+    return k * (1.0 + nu * nu) / pow(1.0 + g * g - 2.0 * g * nu, 1.5);
+}
+
+
+[numthreads(8,8,1)]
+void PrecomputeScattering(uint3 id : SV_DispatchThreadID)
+{
+    AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+    atmosphere.bottom_radius = _PlanetRadius;
+    atmosphere.top_radius = _AtmosphereTop;
+    atmosphere.rayleigh_density = 8.0;
+    atmosphere.mie_density = 1.2;
+    atmosphere.rayleigh_scattering = float3(5.802f, 13.558f, 33.100f) * 1e-3;
+    atmosphere.mie_extinction = float3(0.0044f, 0.0044f, 0.0044f);
+    atmosphere.absorption_extinction = float3(0.000650, 0.001881, 0.000085);
+    _PrecomputeScatteringLUTID[id.xy] = 1;
 }
