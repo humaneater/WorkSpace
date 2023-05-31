@@ -4,12 +4,15 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 RWTexture2D<float4> _TransmittanceLUT;
+Texture2D<float4> _TransmittanceLUT_Pre;
 SAMPLER(sampler_TransmittanceLUT);
+SAMPLER(sampler_TransmittanceLUT_Pre);
 float2 _TransmittanceLUT_Size;
-RWTexture2D<float4> _PrecomputeScatteringLUTID;
-SAMPLER(sampler_PrecomputeScatteringLUTID);
+RWTexture3D<float4> _SCATTERING_TEXTURE;
+SAMPLER(sampler_SCATTERING_TEXTURE);
 
-float2 _PrecomputeScatteringLUTID_Size;
+//x:SCATTERING_TEXTURE_NU_SIZE -1; y: SCATTERING_TEXTURE_MU_S_SIZE z: SCATTERING_TEXTURE_MU_SIZE, w: SCATTERING_TEXTURE_R_SIZE
+float4 SCATTERING_TEXTURE_SIZE;
 float _GasDensity, _AtmosphereTop, _PlanetRadius;
 int _SampleCount;
 const float3 kBetaR = float3(5.802f, 13.558f, 33.100f) * 1e-3; // Rayleigh scattering coeffcient
@@ -29,6 +32,7 @@ struct AtmosphereParameter
     float rayleigh_density;
     float mie_density;
     float sun_angular_radius;
+    float mu_s_min;
 };
 
 //utils
@@ -198,7 +202,7 @@ void TransmittanceLUTPass(uint3 id : SV_DispatchThreadID)
 float3 GetTransmittanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere,Texture2D<float4> transmittance_texture,float r, float mu)
 {
     float2 uv = GetTransmittanceTextureUvFromRMu(atmosphere, r, mu);
-    return float3(transmittance_texture.Sample(sampler_TransmittanceLUT, uv).xyz);
+    return float3(transmittance_texture.SampleLevel(sampler_TransmittanceLUT_Pre, uv,0).xyz);
 }
 
     /*r=∥op∥    d=∥pq∥      μ=(op⋅pq)/rd    μs=(op⋅ωs)/r    ν=(pq⋅ωs)/d*/
@@ -259,11 +263,9 @@ void ComputeSingleScattering(AtmosphereParameter atmosphere, Texture2D<float4> t
                              float mu_s, float nu, bool ray_r_mu_intersects_ground, out float3 rayleigh, out float3 mie)
 {
     // Number of intervals for the numerical integration.
-    const int SAMPLE_COUNT = 50;
+    int SAMPLE_COUNT = 50;
     // The integration step, i.e. the length of each integration interval.
-    float dx =
-        DistanceToNearestAtmosphereBoundary(atmosphere, r, mu,
-                                            ray_r_mu_intersects_ground) / float(SAMPLE_COUNT);
+    float dx =DistanceToNearestAtmosphereBoundary(atmosphere, r, mu,ray_r_mu_intersects_ground) / float(SAMPLE_COUNT);
     // Integration loop.
     float3 rayleigh_sum = 0.0;
     float3 mie_sum = 0.0;
@@ -295,8 +297,126 @@ float MiePhaseFunction(float g, float nu)
     return k * (1.0 + nu * nu) / pow(1.0 + g * g - 2.0 * g * nu, 1.5);
 }
 
+float4 GetScatteringTextureUvwzFromRMuMuSNu(AtmosphereParameter atmosphere,float r, float mu, float mu_s, float nu,bool ray_r_mu_intersects_ground)
+{
+  // Distance to top atmosphere boundary for a horizontal ray at ground level.
+  float H = sqrt(atmosphere.top_radius * atmosphere.top_radius -
+      atmosphere.bottom_radius * atmosphere.bottom_radius);
+  // Distance to the horizon.
+  float rho =SafeSqrt(r * r - atmosphere.bottom_radius * atmosphere.bottom_radius);
+  float u_r = GetTextureCoordFromUnitRange(rho / H, SCATTERING_TEXTURE_SIZE.w);
+    
+  // Discriminant of the quadratic equation for the intersections of the ray
+  // (r,mu) with the ground (see RayIntersectsGround).
+  float r_mu = r * mu;
+  float discriminant =
+      r_mu * r_mu - r * r + atmosphere.bottom_radius * atmosphere.bottom_radius;
+  float u_mu;
+  if (ray_r_mu_intersects_ground) {
+    // Distance to the ground for the ray (r,mu), and its minimum and maximum
+    // values over all mu - obtained for (r,-1) and (r,mu_horizon).
+    float d = -r_mu - SafeSqrt(discriminant);
+    float d_min = r - atmosphere.bottom_radius;
+    float d_max = rho;
+    u_mu = 0.5 - 0.5 * GetTextureCoordFromUnitRange(d_max == d_min ? 0.0 :(d - d_min) / (d_max - d_min), SCATTERING_TEXTURE_SIZE.z / 2);
+  } else {
+    // Distance to the top atmosphere boundary for the ray (r,mu), and its
+    // minimum and maximum values over all mu - obtained for (r,1) and
+    // (r,mu_horizon).
+    float d = -r_mu + SafeSqrt(discriminant + H * H);
+    float d_min = atmosphere.top_radius - r;
+    float d_max = rho + H;
+    u_mu = 0.5 + 0.5 * GetTextureCoordFromUnitRange(
+        (d - d_min) / (d_max - d_min), SCATTERING_TEXTURE_SIZE.z / 2);
+  }
 
-[numthreads(8,8,1)]
+  float d = DistanceToTopAtmosphereBoundary(atmosphere, atmosphere.bottom_radius, mu_s);
+  float d_min = atmosphere.top_radius - atmosphere.bottom_radius;
+  float d_max = H;
+  float a = (d - d_min) / (d_max - d_min);
+  float D = DistanceToTopAtmosphereBoundary(atmosphere, atmosphere.bottom_radius, atmosphere.mu_s_min);
+  float A = (D - d_min) / (d_max - d_min);
+  // An ad-hoc function equal to 0 for mu_s = mu_s_min (because then d = D and
+  // thus a = A), equal to 1 for mu_s = 1 (because then d = d_min and thus
+  // a = 0), and with a large slope around mu_s = 0, to get more texture 
+  // samples near the horizon.
+  float u_mu_s = GetTextureCoordFromUnitRange(max(1.0 - a / A, 0.0) / (1.0 + a), SCATTERING_TEXTURE_SIZE.y);
+
+  float u_nu = (nu + 1.0) / 2.0;
+  return float4(u_nu, u_mu_s, u_mu, u_r);
+}
+
+void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere,float4 uvwz,out float r, out float mu, out float mu_s,out float nu, out int ray_r_mu_intersects_ground)
+{
+
+
+  // Distance to top atmosphere boundary for a horizontal ray at ground level.
+  float H = sqrt(atmosphere.top_radius * atmosphere.top_radius -
+      atmosphere.bottom_radius * atmosphere.bottom_radius);
+  // Distance to the horizon.
+  float rho =H * GetUnitRangeFromTextureCoord(uvwz.w, SCATTERING_TEXTURE_SIZE.w);
+  r = sqrt(rho * rho + atmosphere.bottom_radius * atmosphere.bottom_radius);
+
+  if (uvwz.z < 0.5) {
+    // Distance to the ground for the ray (r,mu), and its minimum and maximum
+    // values over all mu - obtained for (r,-1) and (r,mu_horizon) - from which
+    // we can recover mu:
+    float d_min = r - atmosphere.bottom_radius;
+    float d_max = rho;
+    float d = d_min + (d_max - d_min) * GetUnitRangeFromTextureCoord(
+        1.0 - 2.0 * uvwz.z, SCATTERING_TEXTURE_SIZE.z / 2);
+    mu = d == 0.0  ? float(-1.0) :ClampCosine(-(rho * rho + d * d) / (2.0 * r * d));
+    ray_r_mu_intersects_ground = true;
+  } else {
+    // Distance to the top atmosphere boundary for the ray (r,mu), and its
+    // minimum and maximum values over all mu - obtained for (r,1) and
+    // (r,mu_horizon) - from which we can recover mu:
+    float d_min = atmosphere.top_radius - r;
+    float d_max = rho + H;
+    float d = d_min + (d_max - d_min) * GetUnitRangeFromTextureCoord(
+        2.0 * uvwz.z - 1.0, SCATTERING_TEXTURE_SIZE.z / 2);
+    mu = d == 0.0 ? float(1.0) :ClampCosine((H * H - rho * rho - d * d) / (2.0 * r * d));
+    ray_r_mu_intersects_ground = false;
+  }
+  float x_mu_s =GetUnitRangeFromTextureCoord(uvwz.y, SCATTERING_TEXTURE_SIZE.y);
+  float d_min = atmosphere.top_radius - atmosphere.bottom_radius;
+  float d_max = H;
+  float D = DistanceToTopAtmosphereBoundary(atmosphere, atmosphere.bottom_radius, atmosphere.mu_s_min);
+  float A = (D - d_min) / (d_max - d_min);
+  float a = (A - x_mu_s * A) / (1.0 + x_mu_s * A);
+  float d = d_min + min(a, A) * (d_max - d_min);
+  mu_s = d == 0.0 ? float(1.0) : ClampCosine((H * H - d * d) / (2.0 * atmosphere.bottom_radius * d));
+  nu = ClampCosine(uvwz.x * 2.0 - 1.0);
+}
+
+void GetRMuMuSNuFromScatteringTextureFragCoord(
+    AtmosphereParameter atmosphere, float3 frag_coord,
+    out float r, out float mu,out float mu_s, out float nu,
+    out int ray_r_mu_intersects_ground) {
+
+    float frag_coord_nu = floor(frag_coord.x / SCATTERING_TEXTURE_SIZE.y) ;
+    float frag_coord_mu_s = frag_coord.x % SCATTERING_TEXTURE_SIZE.y ;
+    float4 uvwz =
+        float4(frag_coord_nu, frag_coord_mu_s, frag_coord.y, frag_coord.z) / SCATTERING_TEXTURE_SIZE;
+    GetRMuMuSNuFromScatteringTextureUvwz(atmosphere, uvwz, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+    // Clamp nu to its valid range of values, given mu and mu_s.
+    nu = clamp(nu, mu * mu_s - sqrt((1.0 - mu * mu) * (1.0 - mu_s * mu_s)),
+        mu * mu_s + sqrt((1.0 - mu * mu) * (1.0 - mu_s * mu_s)));
+}
+
+void ComputeSingleScatteringTexture(AtmosphereParameter atmosphere,
+    Texture2D<float4> transmittance_texture, float3 frag_coord,
+    out float3 rayleigh, out float3 mie) {
+    float r,mu,mu_s,nu;
+    bool ray_r_mu_intersects_ground;
+    GetRMuMuSNuFromScatteringTextureFragCoord(atmosphere, frag_coord,
+        r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+    ComputeSingleScattering(atmosphere, transmittance_texture,
+        r, mu, mu_s, nu, ray_r_mu_intersects_ground, rayleigh, mie);
+}
+
+
+[numthreads(8,8,8)]
 void PrecomputeScattering(uint3 id : SV_DispatchThreadID)
 {
     AtmosphereParameter atmosphere = (AtmosphereParameter)0;
@@ -306,6 +426,12 @@ void PrecomputeScattering(uint3 id : SV_DispatchThreadID)
     atmosphere.mie_density = 1.2;
     atmosphere.rayleigh_scattering = float3(5.802f, 13.558f, 33.100f) * 1e-3;
     atmosphere.mie_extinction = float3(0.0044f, 0.0044f, 0.0044f);
+    atmosphere.mie_scattering = float3(0.0044f, 0.0044f, 0.0044f);
     atmosphere.absorption_extinction = float3(0.000650, 0.001881, 0.000085);
-    _PrecomputeScatteringLUTID[id.xy] = 1;
+    atmosphere.mu_s_min = -0.2f;
+    float3 uvw = id.xyz;
+    float3 rayleigh = 0;
+    float3 mie = 0;
+    ComputeSingleScatteringTexture(atmosphere,_TransmittanceLUT_Pre,uvw,rayleigh,mie);
+    _SCATTERING_TEXTURE[id.xyz] = float4( rayleigh + mie,1);
 }
