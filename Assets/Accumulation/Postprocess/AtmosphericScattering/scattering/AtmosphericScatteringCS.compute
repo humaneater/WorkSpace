@@ -1,9 +1,7 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel TransmittanceLUTPass
 #pragma kernel PrecomputeScattering
-#include "Assets/Accumulation/Postprocess/AtmosphericScattering/Function.hlsl"
-
-
+#include "Assets/Accumulation/Postprocess/AtmosphericScattering/scattering//Function.hlsl"
 
 
 [numthreads(8,8,1)]
@@ -30,5 +28,5 @@ void PrecomputeScattering(uint3 id : SV_DispatchThreadID)
     float3 rayleigh = 0;
     float3 mie = 0;
     ComputeSingleScatteringTexture(atmosphere,_TransmittanceLUT_Pre,uvw,rayleigh,mie);
-    _SCATTERING_TEXTURE[id.xyz] = float4( rayleigh + mie,1);
+    _SCATTERING_TEXTURE[id.xyz] = float4( rayleigh , mie.x);
 }
