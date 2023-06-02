@@ -27,7 +27,7 @@ public class AtmosphericScattingGenerate : MonoBehaviour
     private static readonly int _SampleCount = Shader.PropertyToID("_SampleCount");
     private static readonly string TransmittanceLUTPass = "TransmittanceLUTPass";
     private static readonly string PrecomputeScattering = "PrecomputeScattering";
-    private static readonly Vector2 TransmittanceLUTSize = new Vector2(256, 256);
+    private static readonly Vector2 TransmittanceLUTSize = new Vector2(256, 64);
     private static readonly Vector3 PrecomputeScatteringSize = new Vector3(256, 128,32);
     private static readonly int SCATTERING_TEXTURE_SIZEID = Shader.PropertyToID("SCATTERING_TEXTURE_SIZE");
     private static readonly Vector4 SCATTERING_TEXTURE_SIZE = new Vector4(8,32,128,32);
@@ -47,7 +47,7 @@ public class AtmosphericScattingGenerate : MonoBehaviour
 
     private void InitData()
     {
-        RenderTextureDescriptor descriptor = new RenderTextureDescriptor(256, 256, RenderTextureFormat.ARGB32);
+        RenderTextureDescriptor descriptor = new RenderTextureDescriptor((int)TransmittanceLUTSize.x, (int)TransmittanceLUTSize.y, RenderTextureFormat.ARGB32);
         descriptor.enableRandomWrite = true;
         TransparencyLUT = new RenderTexture(descriptor);
         descriptor.width = (int)PrecomputeScatteringSize.x;

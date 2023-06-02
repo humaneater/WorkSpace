@@ -19,12 +19,12 @@ float ClampRadius(AtmosphereParameter atmosphere, float r)
 
 
 //为了每个参数读取时在纹素中心
-float GetTextureCoordFromUnitRange(float x, float texture_size)
+float GetTextureCoordFromUnitRange(float x, int texture_size)
 {
     return 0.5 / float(texture_size) + x * (1.0 - 1.0 / float(texture_size));
 }
 //为了将每个参数的值写在纹素中心
-float GetUnitRangeFromTextureCoord(float u, float texture_size)
+float GetUnitRangeFromTextureCoord(float u, int texture_size)
 {
     return (u - 0.5 / float(texture_size)) / (1.0 - 1.0 / float(texture_size));
 }
@@ -74,7 +74,6 @@ AtmosphereParameter InitAtmosphereParameter(AtmosphereParameter atmosphere,float
 {
     atmosphere.bottom_radius = bottomRadius;
     atmosphere.top_radius = topRadius;
-
     atmosphere.solar_irradiance = float3(1.474,1.8504,1.91198);
     atmosphere.sun_angular_radius = 0.004675;
     atmosphere.rayleigh_density = _DensityProfile(

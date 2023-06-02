@@ -7,7 +7,7 @@
 [numthreads(8,8,1)]
 void TransmittanceLUTPass(uint3 id : SV_DispatchThreadID)
 {
-    float2 uv = id.xy / float2(256, 256);
+    float2 uv = id.xy / _TransmittanceLUT_Size.xy;
     AtmosphereParameter atmosphere = (AtmosphereParameter)0;
     atmosphere = InitAtmosphereParameter(atmosphere,_AtmosphereTop,_PlanetRadius);
 
