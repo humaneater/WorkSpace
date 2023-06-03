@@ -51,6 +51,8 @@ float GetProfileDensity(DensityProfile profile,float altitude)
 }
 
 
+
+
 //初始化两层密度，上层和下层
 DensityProfileLayer _DensityProfileLayer(float w, float t, float s, float l, float c)
 {
@@ -94,6 +96,7 @@ AtmosphereParameter InitAtmosphereParameter(AtmosphereParameter atmosphere,float
     atmosphere.mu_s_min = -0.207911690817759;
     return atmosphere;
 }
+
 
 
 

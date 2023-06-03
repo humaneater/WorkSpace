@@ -37,7 +37,7 @@ public class LightShaftFeature : ScriptableRendererFeature
         //light shaft 简单做法就是径向模糊，先做一个试试，大气散射有点复杂
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            CommandBuffer cmd = CommandBufferPool.Get("");
+            CommandBuffer cmd = CommandBufferPool.Get(k_Tag);
             using (new ProfilingScope(cmd, m_ProfilingSampler))
             {
                 context.ExecuteCommandBuffer(cmd);

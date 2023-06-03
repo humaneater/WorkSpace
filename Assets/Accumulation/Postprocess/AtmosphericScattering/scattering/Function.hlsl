@@ -1,8 +1,6 @@
 #ifndef ATMOSPHERE_SCATTERING_FUNCTION
 #define ATMOSPHERE_SCATTERING_FUNCTION
-
 #include "./Utils.hlsl"
-#include "./header.hlsl"
 
 float DistanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere, float r, float mu)
 {
@@ -65,6 +63,7 @@ void GetHeightAndCosTheta(AtmosphereParameter atmosphere, in float2 uv, out floa
     cosT = ClampCosine(cosT);
 }
 
+
 // total optical length of rayleigh and mie
 float ComputeOpticalLengthToTopAtmosphereBoundary(AtmosphereParameter atmosphere, DensityProfile profile, float r,
                                                   float mu)
@@ -104,7 +103,7 @@ float3 GetTransmittanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere, T
                                                float r, float mu)
 {
     float2 uv = GetTransmittanceTextureUvFromRMu(atmosphere, r, mu);
-    return float3(transmittance_texture.SampleLevel(sampler_TransmittanceLUT_Pre, uv, 0).xyz);
+    return float3(transmittance_texture.SampleLevel(sampler_TransmittanceLUT, uv, 0).xyz);
 }
 
 /*r=∥op∥    d=∥pq∥      μ=(op⋅pq)/rd    μs=(op⋅ωs)/r    ν=(pq⋅ωs)/d*/
@@ -192,7 +191,7 @@ void ComputeSingleScattering(AtmosphereParameter atmosphere, Texture2D<float4> t
 }
 
 //将r，mu，mu_s，nu转为ScatteringTexture的四维参数
-float4 GetScatteringTextureUvwzFromRMuMuSNu(AtmosphereParameter atmosphere, float r, float mu, float mu_s, float nu,
+float4 GetScatteringTextureUvwzFromRMuMusNu(AtmosphereParameter atmosphere, float r, float mu, float mu_s, float nu,
                                             bool ray_r_mu_intersects_ground)
 {
     // Distance to top atmosphere boundary for a horizontal ray at ground level.
@@ -292,18 +291,6 @@ void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4
     nu = ClampCosine(uvwz.x * 2.0 - 1.0);
 }
 
-/*
-<p>We assumed above that we have 4D textures, which is not the case in practice.
-We therefore need a further mapping, between 3D and 4D texture coordinates. The
-function below expands a 3D texel coordinate into a 4D texture coordinate, and
-then to $(r,\mu,\mu_s,\nu)$ parameters. It does so by "unpacking" two texel
-coordinates from the $x$ texel coordinate. Note also how we clamp the $\nu$
-parameter at the end. This is because $\nu$ is not a fully independent variable:
-its range of values depends on $\mu$ and $\mu_s$ (this can be seen by computing
-$\mu$, $\mu_s$ and $\nu$ from the cartesian coordinates of the zenith, view and
-sun unit direction vectors), and the previous functions implicitely assume this
-(their assertions can break if this constraint is not respected).
-*/
 //根据传入的纹理坐标，还原四维参数
 void GetRMuMuSNuFromScatteringTextureFragCoord(
     AtmosphereParameter atmosphere, float3 frag_coord,
@@ -332,7 +319,360 @@ void ComputeSingleScatteringTexture(AtmosphereParameter atmosphere, Texture2D<fl
                             r, mu, mu_s, nu, ray_r_mu_intersects_ground, rayleigh, mie);
 }
 
-//
+//多次散射,方法排序不是推理排序
+//首先采集单次散射，单词散射的采集以来uv的转变，uv也是从四个维度来的，依赖上边的一个方法
+//解除统一量纲是个很容出错的东西，反向也证明了统一量纲的重要性，让你不会再写代码的时候出现思路不清晰的清空，角度就是角度，距离就是距离，是一个重要的思路
+//但我已经回不了头了,后边用统一量纲了，看的比较费劲
+/*
+<h4 id="single_scattering_lookup">Lookup</h4>
+*/
+
+
+float3 GetScattering(AtmosphereParameter atmosphere, Texture3D<float4> scattering_texture, float r, float mu,
+                     float mu_s, float nu, bool ray_r_mu_intersects_ground)
+{
+    float4 uvwz = GetScatteringTextureUvwzFromRMuMusNu(atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+
+    float tex_coord_x = uvwz.x * float(SCATTERING_TEXTURE_SIZE.x - 1);
+    float tex_x = floor(tex_coord_x);
+    float lerp = tex_coord_x - tex_x;
+    float3 uvw0 = float3((tex_x + uvwz.y) / float(SCATTERING_TEXTURE_SIZE.x),
+                         uvwz.z, uvwz.w);
+    float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / float(SCATTERING_TEXTURE_SIZE.x),
+                         uvwz.z, uvwz.w);
+    //因为nu与mu_s在texture占用同一维，导致nu精度较低，使用两个nu进行采样插值，防止出现阶层
+    return float3(
+        scattering_texture.Sample(sampler_SingleScatteringTex, uvw0).xyz * (1.0 - lerp) + scattering_texture.Sample(
+            sampler_SingleScatteringTex, uvw1).xyz * lerp);
+}
+
+
+//用来计算两个散射的多层（n-1）层的预积分，这里把mie散射和rayleigh散射加到了一起，之前我用a通道存的，所以倒是没啥问题，两个都读一遍就好了
+//从第二层开始就只用读多次散射的图就ok了，两个散射系数已经在一起了，很nice
+float3 GetScattering(AtmosphereParameter atmosphere, Texture3D<float4> single_rayleigh_scattering_texture,
+                     Texture3D<float4> single_mie_scattering_texture, Texture3D<float4> multiple_scattering_texture,
+                     float r, float mu, float mu_s, float nu, bool ray_r_mu_intersects_ground, int scattering_order)
+{
+    if (scattering_order == 1)
+    {
+        float3 rayleigh = GetScattering(atmosphere, single_rayleigh_scattering_texture, r, mu, mu_s, nu,
+                                        ray_r_mu_intersects_ground);
+        float3 mie = GetScattering(atmosphere, single_mie_scattering_texture, r, mu, mu_s, nu,
+                                   ray_r_mu_intersects_ground);
+        return rayleigh * RayleighPhaseFunction(nu) + mie * MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
+    }
+    else
+    {
+        return GetScattering(
+            atmosphere, multiple_scattering_texture, r, mu, mu_s, nu,
+            ray_r_mu_intersects_ground);
+    }
+}
+
+
+//只预计算了任意高度处水平表面的地面Irradiance，所以就只有两个参数
+float2 GetIrradianceTextureUvFromRMus(IN(AtmosphereParameter) atmosphere,Length r,Number mu_s)
+{
+    Number x_r = (r - atmosphere.bottom_radius) / (atmosphere.top_radius - atmosphere.bottom_radius);
+    Number x_mu_s = mu_s * 0.5 + 0.5;
+    return float2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
+                  GetTextureCoordFromUnitRange(x_r, IRRADIANCE_TEXTURE_HEIGHT));
+}
+
+float3 GetIrradiance(AtmosphereParameter atmosphere, Texture2D<float4> irradiance_texture, float r, float mu_s)
+{
+    float2 uv = GetIrradianceTextureUvFromRMus(atmosphere, r, mu_s);
+    return float3(irradiance_texture.Sample(sampler_TransmittanceLUT, uv).xyz);
+}
+
+//计算ScatteringDensity
+float3 ComputeScatteringDensity(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                                IN(Texture3D<float4>) single_rayleigh_scattering_texture,
+                                IN(Texture3D<float4>) single_mie_scattering_texture,
+                                IN(Texture3D<float4>) multiple_scattering_texture,
+                                IN(Texture2D<float4>) irradiance_texture,Length r, Number mu, Number mu_s, Number nu,
+                                int scattering_order)
+{
+    // Compute unit direction vectors for the zenith, the view direction omega and
+    // and the sun direction omega_s, such that the cosine of the view-zenith
+    // angle is mu, the cosine of the sun-zenith angle is mu_s, and the cosine of
+    // the view-sun angle is nu. The goal is to simplify computations below.
+    float3 zenith_direction = float3(0.0, 0.0, 1.0);
+    float3 omega = float3(sqrt(1.0 - mu * mu), 0.0, mu);
+    Number sun_dir_x = omega.x == 0.0 ? 0.0 : (nu - mu * mu_s) / omega.x;
+    Number sun_dir_y = sqrt(max(1.0 - sun_dir_x * sun_dir_x - mu_s * mu_s, 0.0));
+    float3 omega_s = float3(sun_dir_x, sun_dir_y, mu_s);
+
+    int SAMPLE_COUNT = 16;
+    Angle dphi = pi / Number(SAMPLE_COUNT);
+    Angle dtheta = pi / Number(SAMPLE_COUNT);
+    float3 rayleigh_mie = 0;
+
+    // Nested loops for the integral over all the incident directions omega_i.
+    for (int l = 0; l < SAMPLE_COUNT; l++)
+    {
+        Angle theta = (Number(l) + 0.5) * dtheta;
+        Number cos_theta = cos(theta);
+        Number sin_theta = sin(theta);
+        bool ray_r_theta_intersects_ground = RayIntersectsGround(atmosphere, r, cos_theta);
+
+        // The distance and transmittance to the ground only depend on theta, so we
+        // can compute them in the outer loop for efficiency.
+        Length distance_to_ground = 0.0;
+        float3 transmittance_to_ground = 0.0;
+        float3 ground_albedo = 0.0;
+        if (ray_r_theta_intersects_ground)
+        {
+            distance_to_ground =
+                DistanceToBottomAtmosphereBoundary(atmosphere, r, cos_theta);
+            transmittance_to_ground =
+                GetTransmittance(atmosphere, transmittance_texture, r, cos_theta,
+                                 distance_to_ground, true /* ray_intersects_ground */);
+            ground_albedo = atmosphere.ground_albedo;
+        }
+
+        for (int m = 0; m < 2 * SAMPLE_COUNT; m++)
+        {
+            Angle phi = (Number(m) + 0.5) * dphi;
+            float3 omega_i =
+                float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+            float domega_i = (dtheta) * (dphi) * sin(theta);
+
+            // The radiance L_i arriving from direction omega_i after n-1 bounces is
+            // the sum of a term given by the precomputed scattering texture for the
+            // (n-1)-th order:
+            Number nu1 = dot(omega_s, omega_i);
+            float3 incident_radiance = GetScattering(atmosphere,
+                                                     single_rayleigh_scattering_texture, single_mie_scattering_texture,
+                                                     multiple_scattering_texture, r, omega_i.z, mu_s, nu1,
+                                                     ray_r_theta_intersects_ground, scattering_order - 1);
+
+            // and of the contribution from the light paths with n-1 bounces and whose
+            // last bounce is on the ground. This contribution is the product of the
+            // transmittance to the ground, the ground albedo, the ground BRDF, and
+            // the irradiance received on the ground after n-2 bounces.
+            float3 ground_normal =
+                normalize(zenith_direction * r + omega_i * distance_to_ground);
+            float3 ground_irradiance = GetIrradiance(
+                atmosphere, irradiance_texture, atmosphere.bottom_radius,
+                dot(ground_normal, omega_s));
+            incident_radiance += transmittance_to_ground *
+                ground_albedo * (1.0 / (PI)) * ground_irradiance;
+
+            // The radiance finally scattered from direction omega_i towards direction
+            // -omega is the product of the incident radiance, the scattering
+            // coefficient, and the phase function for directions omega and omega_i
+            // (all this summed over all particle types, i.e. Rayleigh and Mie).
+            Number nu2 = dot(omega, omega_i);
+            Number rayleigh_density = GetProfileDensity(
+                atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
+            Number mie_density = GetProfileDensity(
+                atmosphere.mie_density, r - atmosphere.bottom_radius);
+            rayleigh_mie += incident_radiance * (
+                    atmosphere.rayleigh_scattering * rayleigh_density *
+                    RayleighPhaseFunction(nu2) +
+                    atmosphere.mie_scattering * mie_density *
+                    MiePhaseFunction(atmosphere.mie_phase_function_g, nu2)) *
+                domega_i;
+        }
+    }
+    return rayleigh_mie;
+}
+
+
+//计算高阶散射，只需要根据ScatteringDensity沿着mu进行积分即可
+float3 ComputeMultipleScattering(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                                 IN(Texture3D<float4>) scattering_density_texture,Length r,Number mu,Number mu_s,
+                                 Number nu, bool ray_r_mu_intersects_ground)
+{
+    // Number of intervals for the numerical integration.
+    const int SAMPLE_COUNT = 50;
+
+    // The integration step, i.e. the length of each integration interval.
+    Length dx = DistanceToNearestAtmosphereBoundary(
+        atmosphere, r, mu, ray_r_mu_intersects_ground) / Number(SAMPLE_COUNT);
+
+    // Integration loop.
+    float3 rayleigh_mie_sum = 0.0 * 1.0;
+
+    for (int i = 0; i <= SAMPLE_COUNT; i++)
+    {
+        Length d_i = Number(i) * dx;
+
+        // The r, mu and mu_s parameters at the current integration point (see the
+        // single scattering section for a detailed explanation).
+        Length r_i = ClampRadius(atmosphere, sqrt(d_i * d_i + 2.0 * r * mu * d_i + r * r));
+        Number mu_i = ClampCosine((r * mu + d_i) / r_i);
+        Number mu_s_i = ClampCosine((r * mu_s + d_i * nu) / r_i);
+
+        // The Rayleigh and Mie multiple scattering at the current sample point.
+        float3 rayleigh_mie_i = GetScattering(
+                atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
+                ray_r_mu_intersects_ground)
+            * GetTransmittance(atmosphere, transmittance_texture, r, mu, d_i, ray_r_mu_intersects_ground)
+            * dx;
+
+        // Sample weight (from the trapezoidal rule).
+        Number weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
+        rayleigh_mie_sum += rayleigh_mie_i * weight_i;
+    }
+    return rayleigh_mie_sum;
+}
+
+//计算n-1阶的scattering
+float3 ComputeScatteringDensityTexture(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                                       IN(Texture3D<float4>) single_rayleigh_scattering_texture,
+                                       IN(Texture3D<float4>) single_mie_scattering_texture,
+                                       IN(Texture3D<float4>) multiple_scattering_texture,
+                                       IN(Texture2D<float4>) irradiance_texture,IN(float3) frag_coord,
+                                       int scattering_order)
+{
+    Length r;
+    Number mu;
+    Number mu_s;
+    Number nu;
+    bool ray_r_mu_intersects_ground;
+
+    GetRMuMuSNuFromScatteringTextureFragCoord(atmosphere, frag_coord,
+                                              r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+    return ComputeScatteringDensity(atmosphere, transmittance_texture, single_rayleigh_scattering_texture,
+                                    single_mie_scattering_texture, multiple_scattering_texture, irradiance_texture, r,
+                                    mu, mu_s, nu, scattering_order);
+}
+
+float3 ComputeMultipleScatteringTexture(
+    IN(AtmosphereParameter) atmosphere,
+    IN(Texture2D<float4>) transmittance_texture,
+    IN(Texture3D<float4>) scattering_density_texture,
+    IN(float3) frag_coord,OUT(Number) nu)
+{
+    Length r;
+    Number mu;
+    Number mu_s;
+    bool ray_r_mu_intersects_ground;
+    GetRMuMuSNuFromScatteringTextureFragCoord(atmosphere, frag_coord, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+    return ComputeMultipleScattering(atmosphere, transmittance_texture, scattering_density_texture, r, mu, mu_s, nu,
+                                     ray_r_mu_intersects_ground);
+}
+
+//计算地面direct irradiance
+float3 ComputeDirectIrradiance(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,Length r,
+                               Number mu_s)
+{
+    Number alpha_s = atmosphere.sun_angular_radius;
+
+    // Approximate average of the cosine factor mu_s over the visible fraction of
+    // the Sun disc.
+    //根据太阳的 view facor计 算余弦因子，因为太阳的角半径很小，所以可以将余弦因子看作常数，而不需要积分
+    Number average_cosine_factor = mu_s < -alpha_s
+                                       ? 0.0
+                                       : (mu_s > alpha_s
+                                              ? mu_s
+                                              : (mu_s + alpha_s) * (mu_s + alpha_s) / (4.0 * alpha_s));
+
+    return atmosphere.solar_irradiance * exp(
+        GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, mu_s)) * average_cosine_factor;
+}
+
+//计算地面法向方向的半球空间内收到的(n-2)次bounce后受到的irradiance，因为计算n次bounce的multiple scattering时需要地面上的(n-1)次bounce后的radiance
+float3 ComputeIndirectIrradiance(IN(AtmosphereParameter) atmosphere,
+                                 IN(Texture3D<float4>) single_rayleigh_scattering_texture,
+                                 IN(Texture3D<float4>) single_mie_scattering_texture,
+                                 IN(Texture3D<float4>) multiple_scattering_texture,Length r,Number mu_s,
+                                 int scattering_order)
+{
+    const int SAMPLE_COUNT = 32;
+    const Angle dphi = pi / Number(SAMPLE_COUNT);
+    const Angle dtheta = pi / Number(SAMPLE_COUNT);
+    float3 result = 0.0 * 1.0;
+    float3 omega_s = float3(sqrt(1.0 - mu_s * mu_s), 0.0, mu_s);
+    for (int j = 0; j < SAMPLE_COUNT / 2; j++)
+    {
+        Angle theta = (Number(j) + 0.5) * dtheta;
+        for (int i = 0; i < 2 * SAMPLE_COUNT; i++)
+        {
+            Angle phi = (Number(i) + 0.5) * dphi;
+            float3 omega = float3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
+            float domega = (dtheta / 1.0) * (dphi / 1.0) * sin(theta) * 1.0;
+
+            Number nu = dot(omega, omega_s);
+            result += GetScattering(atmosphere, single_rayleigh_scattering_texture, single_mie_scattering_texture,
+                                    multiple_scattering_texture, r, omega.z, mu_s, nu, false, scattering_order) * omega.
+                z * domega;
+        }
+    }
+    return result;
+}
+
+/*
+<p>The inverse mapping follows immediately:
+*/
+void GetRMusFromIrradianceTextureUv(IN(AtmosphereParameter) atmosphere,
+                                    IN(float2) uv,OUT(Length) r,OUT(Number) mu_s)
+{
+    Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, IRRADIANCE_TEXTURE_WIDTH);
+    Number x_r = GetUnitRangeFromTextureCoord(uv.y, IRRADIANCE_TEXTURE_HEIGHT);
+    r = atmosphere.bottom_radius + x_r * (atmosphere.top_radius - atmosphere.bottom_radius);
+    mu_s = ClampCosine(2.0 * x_mu_s - 1.0);
+}
+
+/*
+<p>It is now easy to define a fragment shader function to precompute a texel of
+the ground irradiance texture, for the direct irradiance:
+*/
+float3 ComputeDirectIrradianceTexture(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                                      IN(float2) frag_coord)
+{
+    Length r;
+    Number mu_s;
+    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+    return ComputeDirectIrradiance(atmosphere, transmittance_texture, r, mu_s);
+}
+
+//计算地面的间接Irradiance
+float3 ComputeIndirectIrradianceTexture(IN(AtmosphereParameter) atmosphere,
+                                        IN(Texture3D<float4>) single_rayleigh_scattering_texture,
+                                        IN(Texture3D<float4>) single_mie_scattering_texture,
+                                        IN(Texture3D<float4>) multiple_scattering_texture,IN(float2) frag_coord,
+                                        int scattering_order)
+{
+    Length r;
+    Number mu_s;
+    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+    return ComputeIndirectIrradiance(atmosphere, single_rayleigh_scattering_texture, single_mie_scattering_texture,
+                                     multiple_scattering_texture, r, mu_s, scattering_order);
+}
+
+//从累计的scattering中分离一阶mie scattering
+float3 GetExtrapolatedSingleMieScattering(IN(AtmosphereParameter) atmosphere,IN(float4) scattering)
+{
+    // Algebraically this can never be negative, but rounding errors can produce
+    // that effect for sufficiently short view rays.
+    if (scattering.r <= 0.0)
+    {
+        return 0.0;
+    }
+    return scattering.rgb * scattering.a / scattering.r * (atmosphere.rayleigh_scattering.r / atmosphere.mie_scattering.
+        r) * (atmosphere.mie_scattering / atmosphere.rayleigh_scattering);
+}
+
+//得到一阶  mie，以及累计高阶scattering和一阶rayleigh
+float3 GetCombinedScattering(IN(AtmosphereParameter) atmosphere,IN(Texture3D<float4>) scattering_texture,
+                             IN(Texture3D<float4>) single_mie_scattering_texture,Length r,Number mu, Number mu_s,
+                             Number nu, bool ray_r_mu_intersects_ground,OUT(float3) single_mie_scattering)
+{
+    float4 uvwz = GetScatteringTextureUvwzFromRMuMusNu(atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+    Number tex_coord_x = uvwz.x * Number(SCATTERING_TEXTURE_SIZE.x - 1);
+    Number tex_x = floor(tex_coord_x);
+    Number lerp = tex_coord_x - tex_x;
+    float3 uvw0 = float3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
+    float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
+    float4 combined_scattering = scattering_texture.Sample(sampler_SingleScatteringTex, uvw0) * (1.0 - lerp) +
+        scattering_texture.Sample(sampler_SingleScatteringTex, uvw1) * lerp;
+    float3 scattering = float3(combined_scattering.xyz);
+    single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
+    return scattering;
+}
 
 
 #endif
