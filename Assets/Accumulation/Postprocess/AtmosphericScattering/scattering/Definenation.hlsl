@@ -27,7 +27,7 @@ RWTexture3D<float4> _SingleRayleighScatteringTex_RW;
 RWTexture3D<float4> _SingleMieScatteringTex_RW;
 Texture3D<float4> _SingleRayleighScatteringTex;
 Texture3D<float4> _SingleMieScatteringTex;
-SamplerState sampler_linear_repeat_singleScatter3D;
+SamplerState sampler_linear_clamp_singleScatter3D;
 
 RWTexture3D<float4> _MultiScatteringTex_RW;
 Texture3D<float4> _MultiScatteringTex;
