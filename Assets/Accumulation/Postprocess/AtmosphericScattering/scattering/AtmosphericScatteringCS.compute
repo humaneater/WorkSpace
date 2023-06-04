@@ -1,10 +1,16 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel TransmittanceLUTPass
+#pragma kernel IrradianceLUT
 #pragma kernel PrecomputeSingleScattering
+#pragma kernel ComputeScatteringDensity
 #pragma kernel PreComputeMultiScattering
 #include "Assets/Accumulation/Postprocess/AtmosphericScattering/scattering//Function.hlsl"
 
 
+/**
+ * \brief 
+ * \param id 预计算通透度的图
+ */
 [numthreads(8,8,1)]
 void TransmittanceLUTPass(uint3 id : SV_DispatchThreadID)
 {
@@ -18,7 +24,24 @@ void TransmittanceLUTPass(uint3 id : SV_DispatchThreadID)
     _TransmittanceLUT_RW[id.xy] = float4(col, 1);
 }
 
+/**
+ * \brief 
+ * \param id 计算地面的irradiance
+ */
+[numthreads(8,8,1)]
+void IrradianceLUT(uint3 id : SV_DispatchThreadID)
+{
+    float2 uv = id.xy;
+    AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+    atmosphere = InitAtmosphereParameter(atmosphere, _AtmosphereTop, _PlanetRadius);
+    float3 col = ComputeDirectIrradianceTexture(atmosphere,_TransmittanceLUT,uv);
+    _IrradianceTex_RW[id.xy] = float4(col, 1);
+}
 
+/**
+ * \brief 
+ * \param id 计算单次散射
+ */
 [numthreads(8,8,8)]
 void PrecomputeSingleScattering(uint3 id : SV_DispatchThreadID)
 {
@@ -32,16 +55,34 @@ void PrecomputeSingleScattering(uint3 id : SV_DispatchThreadID)
     _SingleMieScatteringTex_RW[id.xyz] = float4(mie, 1);
 }
 
+
+
+/**
+ * \brief 
+ * \param id 大气密度
+ */
+[numthreads(8,8,8)]
+void ComputeScatteringDensity(uint3 id : SV_DispatchThreadID)
+{
+    AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+    atmosphere = InitAtmosphereParameter(atmosphere,_AtmosphereTop,_PlanetRadius);
+    float3 uvw = id.xyz;
+    float3 scatteringDensity = ComputeScatteringDensityTexture(atmosphere,_TransmittanceLUT,_SingleRayleighScatteringTex,_SingleMieScatteringTex,_MultiScatteringTex,_IrradianceTex,uvw,2);
+    _ScatteringDensityTex_RW[id.xyz] = float4(scatteringDensity,1);
+}
+
+/**
+ * \brief 
+ * \param id 计算多次散射的图
+ */
 [numthreads(8,8,8)]
 void PreComputeMultiScattering(uint3 id : SV_DispatchThreadID)
 {
     AtmosphereParameter atmosphere = (AtmosphereParameter)0;
     atmosphere = InitAtmosphereParameter(atmosphere, _AtmosphereTop, _PlanetRadius);
     float3 uvw = id.xyz;
-    float3 rayleigh = 0;
-    float3 mie = 0;
-
-    float3 res = ComputeScatteringDensityTexture(atmosphere, _TransmittanceLUT, _SingleRayleighScatteringTex,
-                                                 _SingleMieScatteringTex, _MultiScatteringTex, _IrradianceTex, uvw, 1);
-    _MultiScatteringTex_RW[id.xyz] = float4(res, mie.x);
+    float nu;
+    float3 res = ComputeMultipleScatteringTexture(atmosphere,_TransmittanceLUT,_ScatteringDensityTex,uvw,nu);
+    _MultiScatteringTex_RW[id.xyz] = float4(res, 1);
 }
+

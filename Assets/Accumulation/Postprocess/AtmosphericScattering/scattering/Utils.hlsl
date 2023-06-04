@@ -37,7 +37,7 @@ float RayleighPhaseFunction(float nu)
 float MiePhaseFunction(float g, float nu)
 {
     float k = 3.0 / (8.0 * PI) * (1.0 - g * g) / (2.0 + g * g);
-    return k * (1.0 + nu * nu) / pow(1.0 + g * g - 2.0 * g * nu, 1.5);
+    return k * (1.0 + nu * nu) / pow(max(0.0f,1.0 + g * g - 2.0 * g * nu), 1.5);
 }
 float GetLayerDensity(DensityProfileLayer layer,float altitude)
 {

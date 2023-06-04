@@ -103,7 +103,7 @@ float3 GetTransmittanceToTopAtmosphereBoundary(AtmosphereParameter atmosphere, T
                                                float r, float mu)
 {
     float2 uv = GetTransmittanceTextureUvFromRMu(atmosphere, r, mu);
-    return float3(transmittance_texture.SampleLevel(sampler_TransmittanceLUT, uv, 0).xyz);
+    return float3(transmittance_texture.SampleLevel(sampler_linear_clamp_Transmittance, uv, 0).xyz);
 }
 
 /*r=∥op∥    d=∥pq∥      μ=(op⋅pq)/rd    μs=(op⋅ωs)/r    ν=(pq⋅ωs)/d*/
@@ -342,8 +342,9 @@ float3 GetScattering(AtmosphereParameter atmosphere, Texture3D<float4> scatterin
                          uvwz.z, uvwz.w);
     //因为nu与mu_s在texture占用同一维，导致nu精度较低，使用两个nu进行采样插值，防止出现阶层
     return float3(
-        scattering_texture.Sample(sampler_SingleScatteringTex, uvw0).xyz * (1.0 - lerp) + scattering_texture.Sample(
-            sampler_SingleScatteringTex, uvw1).xyz * lerp);
+        scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw0, 0).xyz * (1.0 - lerp) +
+        scattering_texture.SampleLevel(
+            sampler_linear_clamp_singleScatter3D, uvw1, 0).xyz * lerp);
 }
 
 
@@ -375,14 +376,14 @@ float2 GetIrradianceTextureUvFromRMus(IN(AtmosphereParameter) atmosphere,Length 
 {
     Number x_r = (r - atmosphere.bottom_radius) / (atmosphere.top_radius - atmosphere.bottom_radius);
     Number x_mu_s = mu_s * 0.5 + 0.5;
-    return float2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
-                  GetTextureCoordFromUnitRange(x_r, IRRADIANCE_TEXTURE_HEIGHT));
+    return float2(GetTextureCoordFromUnitRange(x_mu_s, _IrradianceTex_Size.x),
+                  GetTextureCoordFromUnitRange(x_r, _IrradianceTex_Size.y));
 }
 
 float3 GetIrradiance(AtmosphereParameter atmosphere, Texture2D<float4> irradiance_texture, float r, float mu_s)
 {
     float2 uv = GetIrradianceTextureUvFromRMus(atmosphere, r, mu_s);
-    return float3(irradiance_texture.Sample(sampler_TransmittanceLUT, uv).xyz);
+    return float3(irradiance_texture.SampleLevel(sampler_linear_clamp_IrradianceTex, uv, 0).xyz);
 }
 
 //计算ScatteringDensity
@@ -409,6 +410,8 @@ float3 ComputeScatteringDensity(IN(AtmosphereParameter) atmosphere,IN(Texture2D<
     float3 rayleigh_mie = 0;
 
     // Nested loops for the integral over all the incident directions omega_i.
+    //外层循环天顶角
+    float3 a = 0;
     for (int l = 0; l < SAMPLE_COUNT; l++)
     {
         Angle theta = (Number(l) + 0.5) * dtheta;
@@ -423,21 +426,17 @@ float3 ComputeScatteringDensity(IN(AtmosphereParameter) atmosphere,IN(Texture2D<
         float3 ground_albedo = 0.0;
         if (ray_r_theta_intersects_ground)
         {
-            distance_to_ground =
-                DistanceToBottomAtmosphereBoundary(atmosphere, r, cos_theta);
-            transmittance_to_ground =
-                GetTransmittance(atmosphere, transmittance_texture, r, cos_theta,
-                                 distance_to_ground, true /* ray_intersects_ground */);
+            distance_to_ground = DistanceToBottomAtmosphereBoundary(atmosphere, r, cos_theta);
+            transmittance_to_ground = GetTransmittance(atmosphere, transmittance_texture, r, cos_theta,
+                                                       distance_to_ground, true /* ray_intersects_ground */);
             ground_albedo = atmosphere.ground_albedo;
         }
-
+        //二层循环方位角,*2是因为方位角积分是2PI
         for (int m = 0; m < 2 * SAMPLE_COUNT; m++)
         {
             Angle phi = (Number(m) + 0.5) * dphi;
-            float3 omega_i =
-                float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+            float3 omega_i = float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
             float domega_i = (dtheta) * (dphi) * sin(theta);
-
             // The radiance L_i arriving from direction omega_i after n-1 bounces is
             // the sum of a term given by the precomputed scattering texture for the
             // (n-1)-th order:
@@ -451,29 +450,19 @@ float3 ComputeScatteringDensity(IN(AtmosphereParameter) atmosphere,IN(Texture2D<
             // last bounce is on the ground. This contribution is the product of the
             // transmittance to the ground, the ground albedo, the ground BRDF, and
             // the irradiance received on the ground after n-2 bounces.
-            float3 ground_normal =
-                normalize(zenith_direction * r + omega_i * distance_to_ground);
-            float3 ground_irradiance = GetIrradiance(
-                atmosphere, irradiance_texture, atmosphere.bottom_radius,
-                dot(ground_normal, omega_s));
-            incident_radiance += transmittance_to_ground *
-                ground_albedo * (1.0 / (PI)) * ground_irradiance;
-
+            float3 ground_normal = normalize(zenith_direction * r + omega_i * distance_to_ground);
+            float3 ground_irradiance = GetIrradiance(atmosphere, irradiance_texture, atmosphere.bottom_radius,
+                                                     dot(ground_normal, omega_s));
+            incident_radiance += transmittance_to_ground * ground_albedo * (1.0 / (PI)) * ground_irradiance;
             // The radiance finally scattered from direction omega_i towards direction
             // -omega is the product of the incident radiance, the scattering
             // coefficient, and the phase function for directions omega and omega_i
             // (all this summed over all particle types, i.e. Rayleigh and Mie).
             Number nu2 = dot(omega, omega_i);
-            Number rayleigh_density = GetProfileDensity(
-                atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
-            Number mie_density = GetProfileDensity(
-                atmosphere.mie_density, r - atmosphere.bottom_radius);
-            rayleigh_mie += incident_radiance * (
-                    atmosphere.rayleigh_scattering * rayleigh_density *
-                    RayleighPhaseFunction(nu2) +
-                    atmosphere.mie_scattering * mie_density *
-                    MiePhaseFunction(atmosphere.mie_phase_function_g, nu2)) *
-                domega_i;
+            Number rayleigh_density = GetProfileDensity(atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
+            Number mie_density = GetProfileDensity(atmosphere.mie_density, r - atmosphere.bottom_radius);
+            rayleigh_mie += incident_radiance * (atmosphere.rayleigh_scattering * rayleigh_density * RayleighPhaseFunction(nu2)
+                    + atmosphere.mie_scattering * mie_density * MiePhaseFunction(atmosphere.mie_phase_function_g, nu2))*domega_i;
         }
     }
     return rayleigh_mie;
@@ -494,7 +483,7 @@ float3 ComputeMultipleScattering(IN(AtmosphereParameter) atmosphere,IN(Texture2D
 
     // Integration loop.
     float3 rayleigh_mie_sum = 0.0 * 1.0;
-
+    float3 a = 0;
     for (int i = 0; i <= SAMPLE_COUNT; i++)
     {
         Length d_i = Number(i) * dx;
@@ -506,11 +495,7 @@ float3 ComputeMultipleScattering(IN(AtmosphereParameter) atmosphere,IN(Texture2D
         Number mu_s_i = ClampCosine((r * mu_s + d_i * nu) / r_i);
 
         // The Rayleigh and Mie multiple scattering at the current sample point.
-        float3 rayleigh_mie_i = GetScattering(
-                atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
-                ray_r_mu_intersects_ground)
-            * GetTransmittance(atmosphere, transmittance_texture, r, mu, d_i, ray_r_mu_intersects_ground)
-            * dx;
+        float3 rayleigh_mie_i = GetScattering(atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,ray_r_mu_intersects_ground)* GetTransmittance(atmosphere, transmittance_texture, r, mu, d_i, ray_r_mu_intersects_ground)* dx;
 
         // Sample weight (from the trapezoidal rule).
         Number weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
@@ -540,11 +525,9 @@ float3 ComputeScatteringDensityTexture(IN(AtmosphereParameter) atmosphere,IN(Tex
                                     mu, mu_s, nu, scattering_order);
 }
 
-float3 ComputeMultipleScatteringTexture(
-    IN(AtmosphereParameter) atmosphere,
-    IN(Texture2D<float4>) transmittance_texture,
-    IN(Texture3D<float4>) scattering_density_texture,
-    IN(float3) frag_coord,OUT(Number) nu)
+float3 ComputeMultipleScatteringTexture(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                                        IN(Texture3D<float4>) scattering_density_texture,IN(float3) frag_coord,
+                                        OUT(Number) nu)
 {
     Length r;
     Number mu;
@@ -610,8 +593,8 @@ float3 ComputeIndirectIrradiance(IN(AtmosphereParameter) atmosphere,
 void GetRMusFromIrradianceTextureUv(IN(AtmosphereParameter) atmosphere,
                                     IN(float2) uv,OUT(Length) r,OUT(Number) mu_s)
 {
-    Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, IRRADIANCE_TEXTURE_WIDTH);
-    Number x_r = GetUnitRangeFromTextureCoord(uv.y, IRRADIANCE_TEXTURE_HEIGHT);
+    Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, _IrradianceTex_Size.x);
+    Number x_r = GetUnitRangeFromTextureCoord(uv.y, _IrradianceTex_Size.y);
     r = atmosphere.bottom_radius + x_r * (atmosphere.top_radius - atmosphere.bottom_radius);
     mu_s = ClampCosine(2.0 * x_mu_s - 1.0);
 }
@@ -625,7 +608,7 @@ float3 ComputeDirectIrradianceTexture(IN(AtmosphereParameter) atmosphere,IN(Text
 {
     Length r;
     Number mu_s;
-    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / _IrradianceTex_Size, r, mu_s);
     return ComputeDirectIrradiance(atmosphere, transmittance_texture, r, mu_s);
 }
 
@@ -638,7 +621,7 @@ float3 ComputeIndirectIrradianceTexture(IN(AtmosphereParameter) atmosphere,
 {
     Length r;
     Number mu_s;
-    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+    GetRMusFromIrradianceTextureUv(atmosphere, frag_coord / _IrradianceTex_Size, r, mu_s);
     return ComputeIndirectIrradiance(atmosphere, single_rayleigh_scattering_texture, single_mie_scattering_texture,
                                      multiple_scattering_texture, r, mu_s, scattering_order);
 }
@@ -667,8 +650,9 @@ float3 GetCombinedScattering(IN(AtmosphereParameter) atmosphere,IN(Texture3D<flo
     Number lerp = tex_coord_x - tex_x;
     float3 uvw0 = float3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
     float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
-    float4 combined_scattering = scattering_texture.Sample(sampler_SingleScatteringTex, uvw0) * (1.0 - lerp) +
-        scattering_texture.Sample(sampler_SingleScatteringTex, uvw1) * lerp;
+    float4 combined_scattering = scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw0, 0) * (1.0 -
+            lerp) +
+        scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw1, 0) * lerp;
     float3 scattering = float3(combined_scattering.xyz);
     single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
     return scattering;

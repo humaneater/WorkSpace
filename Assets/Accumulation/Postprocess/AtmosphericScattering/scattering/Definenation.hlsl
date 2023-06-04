@@ -12,24 +12,27 @@
 float2 _TransmittanceLUT_Size;
 RWTexture2D<float4> _TransmittanceLUT_RW;
 Texture2D<float4> _TransmittanceLUT;
-SAMPLER(sampler_TransmittanceLUT);
+SamplerState sampler_linear_clamp_Transmittance;
 //计算irradiance
+RWTexture2D<float4> _IrradianceTex_RW;
 Texture2D<float4> _IrradianceTex;
 SAMPLER(sampler_IrradianceTex);
+float2 _IrradianceTex_Size;
+SamplerState sampler_linear_clamp_IrradianceTex;
+//大气密度的图
+RWTexture3D<float4> _ScatteringDensityTex_RW;
+Texture3D<float4> _ScatteringDensityTex;
 //单次散射多个图
 RWTexture3D<float4> _SingleRayleighScatteringTex_RW;
 RWTexture3D<float4> _SingleMieScatteringTex_RW;
 Texture3D<float4> _SingleRayleighScatteringTex;
 Texture3D<float4> _SingleMieScatteringTex;
-SAMPLER(sampler_SingleScatteringTex);
+SamplerState sampler_linear_clamp_singleScatter3D;
 
 RWTexture3D<float4> _MultiScatteringTex_RW;
 Texture3D<float4> _MultiScatteringTex;
 
 
-float IRRADIANCE_TEXTURE_WIDTH;
-float IRRADIANCE_TEXTURE_HEIGHT;
-float2 IRRADIANCE_TEXTURE_SIZE;
 
 //x:SCATTERING_TEXTURE_NU_SIZE; y: SCATTERING_TEXTURE_MU_S_SIZE z: SCATTERING_TEXTURE_MU_SIZE, w: SCATTERING_TEXTURE_R_SIZE
 float4 SCATTERING_TEXTURE_SIZE;
