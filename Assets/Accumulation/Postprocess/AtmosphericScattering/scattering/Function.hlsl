@@ -342,9 +342,9 @@ float3 GetScattering(AtmosphereParameter atmosphere, Texture3D<float4> scatterin
                          uvwz.z, uvwz.w);
     //因为nu与mu_s在texture占用同一维，导致nu精度较低，使用两个nu进行采样插值，防止出现阶层
     return float3(
-        scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw0, 0).xyz * (1.0 - lerp) +
+        scattering_texture.SampleLevel(sampler_linear_repeat_singleScatter3D, uvw0, 0).xyz * (1.0 - lerp) +
         scattering_texture.SampleLevel(
-            sampler_linear_clamp_singleScatter3D, uvw1, 0).xyz * lerp);
+            sampler_linear_repeat_singleScatter3D, uvw1, 0).xyz * lerp);
 }
 
 
@@ -650,9 +650,9 @@ float3 GetCombinedScattering(IN(AtmosphereParameter) atmosphere,IN(Texture3D<flo
     Number lerp = tex_coord_x - tex_x;
     float3 uvw0 = float3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
     float3 uvw1 = float3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_SIZE.x), uvwz.z, uvwz.w);
-    float4 combined_scattering = scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw0, 0) * (1.0 -
+    float4 combined_scattering = scattering_texture.SampleLevel(sampler_linear_repeat_singleScatter3D, uvw0, 0) * (1.0 -
             lerp) +
-        scattering_texture.SampleLevel(sampler_linear_clamp_singleScatter3D, uvw1, 0) * lerp;
+        scattering_texture.SampleLevel(sampler_linear_repeat_singleScatter3D, uvw1, 0) * lerp;
     float3 scattering = float3(combined_scattering.xyz);
     single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
     return scattering;

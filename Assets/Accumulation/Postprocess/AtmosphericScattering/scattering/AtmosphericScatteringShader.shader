@@ -15,7 +15,7 @@ Shader "PostPorcess/AtmosphericScattering"
 
         Pass
         {
-            blend one zero
+            blend one one
             ztest always
             zwrite off
             HLSLPROGRAM
@@ -68,7 +68,7 @@ Shader "PostPorcess/AtmosphericScattering"
             {
                 AtmosphereParameter atmosphere = (AtmosphereParameter) 0;
                 atmosphere = InitAtmosphereParameter(atmosphere,6420,6360);
-                return GetScattering(atmosphere,_MultiScatteringTex,r,mu,mu_s,nu,false);
+                return GetScattering(atmosphere,_MultiScatteringTex,r,mu,mu_s,nu,ray_r_mu_intersects_ground);
             }
 
             float4 frag(v2f i):SV_Target
@@ -76,8 +76,12 @@ Shader "PostPorcess/AtmosphericScattering"
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, i.uv);
                 float3 worldPos = GetWorldPositionByDepth(i.uv,depth);
+                float4 shadowcoord = TransformWorldToShadowCoord(worldPos);
+                float atten = MainLightRealtimeShadow(shadowcoord);
+                
                 float3 viewDir = _WorldSpaceCameraPos - worldPos;
                 viewDir = normalize(viewDir);
+                //问题在这里
                 worldPos /= 1000.0f;
                 worldPos += float3(0,6360.0f,0);
                 float r = length(worldPos);
@@ -95,7 +99,7 @@ Shader "PostPorcess/AtmosphericScattering"
                     ray_r_mu_intersects_ground = false;
                 }
                 float3 res = GetPrecomputedScattering(r,mu,nu,mu_s,ray_r_mu_intersects_ground);
-                return float4(res,1);
+                return float4(res*atten,1);
             }
             ENDHLSL
         }
