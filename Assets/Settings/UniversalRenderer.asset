@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba09eddec8c039449a0801c0c4ee7692, type: 3}
   m_Name: AtmosphericScatteringPostProcess
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   _setting:
     mEvent: 500
     strength: 1.15
@@ -159,11 +159,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 86e3cebf559953443add0cb2700a2027, type: 3}
   m_Name: LightShaftFeature
   m_EditorClassIdentifier: 
-  m_Active: 1
+  m_Active: 0
   setting:
     mEvent: 550
-    radius: 0.09
-    strength: 0.777
+    radius: 0.086
+    strength: 0.828
 --- !u!114 &2510208397237999177
 MonoBehaviour:
   m_ObjectHideFlags: 0

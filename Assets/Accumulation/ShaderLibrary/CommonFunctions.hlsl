@@ -6,6 +6,7 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 #define HGetWorldNormal(v2fData) (float3(v2fData.tToW[0].z,v2fData.tToW[1].z,v2fData.tToW[2].z))
 #define HGetWorldPos(v2fData)       (float3( (v2fData).tToW[0].w, (v2fData).tToW[1].w, (v2fData).tToW[2].w ))
+#define HGetWorldPosTBN(v2fData)       (float3( (v2fData).tbn[0].w, (v2fData).tbn[1].w, (v2fData).tbn[2].w ))
 
 float3 GetWorldPositionByDepth(float2 uv, float depth)
 {

@@ -48,10 +48,16 @@ Shader "PostPorcess/LightShaft"
             o.uv = v.uv;
             return o;
         }
+        float4 fragBlitFirst(v2f i):SV_Target
+        {
+            return 0;
+        }
+
 
         float4 fragBlit(v2f i):SV_Target
         {
             float3 col = SAMPLE_TEXTURE2D_LOD(_MainTex,sampler_MainTex, i.uv,0);
+            col = clamp(col,0.0,1.0f);
             col *= _Strength;
             return float4(col, 1);
         }

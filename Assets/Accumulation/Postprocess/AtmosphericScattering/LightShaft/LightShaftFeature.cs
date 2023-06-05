@@ -61,7 +61,8 @@ public class LightShaftFeature : ScriptableRendererFeature
             //第一遍降采样
             cmd.GetTemporaryRT(DownSamplingRT01, descriptor);
             cmd.SetRenderTarget(DownSamplingRT01);
-            cmd.SetGlobalTexture(MainTex, CameraColor);
+            
+            cmd.SetGlobalTexture(MainTex, _renderer.cameraColorTarget);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 0);
             //第二遍降采样
             descriptor.width /= 2;

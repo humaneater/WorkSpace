@@ -703,8 +703,7 @@ float3 GetSkyRadiance(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) t
     float3 scattering;
     scattering = GetCombinedScattering(atmosphere, scattering_texture, single_mie_scattering_texture, r, mu, mu_s, nu,
                                        ray_r_mu_intersects_ground, single_mie_scattering);
-    return scattering * RayleighPhaseFunction(nu) + single_mie_scattering *
-        MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
+    return scattering * RayleighPhaseFunction(nu) + single_mie_scattering * MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
 }
 
 float3 GetSkyRadianceToPoint(
@@ -762,7 +761,7 @@ float3 GetSkyRadianceToPoint(
         r_p, mu_p, mu_s_p, nu, ray_r_mu_intersects_ground,
         single_mie_scattering_p);
 
-    scattering = scattering - transmittance * scattering_p;
+    scattering = abs(scattering) - abs(transmittance * scattering_p);
     single_mie_scattering = single_mie_scattering - transmittance * single_mie_scattering_p;
     #ifdef COMBINED_SCATTERING_TEXTURES
     single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, float4(scattering, single_mie_scattering.r));

@@ -74,7 +74,7 @@ Shader "PostPorcess/AtmosphericScattering"
                 float3 res = GetSkyRadiance(atmosphere, _TransmittanceLUT, _MultiScatteringTex, _MultiScatteringTex,
                                             camera,
                                             viewDir, LightDir, transmittance);
-                return res;
+                return res/2;
             }
 
             float3 GetPrecomputedScatteringToPoint(AtmosphereParameter atmosphere, float3 cameraPos, float3 worldPos,
@@ -114,7 +114,7 @@ Shader "PostPorcess/AtmosphericScattering"
                     res = GetPrecomputedScatteringToPoint(atmosphere, _WorldSpaceCameraPos, worldPos, lightDir,
                                                           transmittance);
                     res *= transmittance;
-                    res *= 5.0f;
+                    res *= 10.0f;
                 }
 
 
