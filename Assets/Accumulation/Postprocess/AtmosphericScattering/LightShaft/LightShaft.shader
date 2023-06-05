@@ -36,7 +36,7 @@ Shader "PostPorcess/LightShaft"
         TEXTURE2D_X(_MainTex) ;
         SAMPLER(sampler_MainTex);
         float4 _MainTex_ST, _MainTex_TexelSize;
-        float _Radius;
+        float _Radius,_Strength;
 
         v2f vert(appdata v)
         {
@@ -52,6 +52,7 @@ Shader "PostPorcess/LightShaft"
         float4 fragBlit(v2f i):SV_Target
         {
             float3 col = SAMPLE_TEXTURE2D_LOD(_MainTex,sampler_MainTex, i.uv,0);
+            col *= _Strength;
             return float4(col, 1);
         }
 

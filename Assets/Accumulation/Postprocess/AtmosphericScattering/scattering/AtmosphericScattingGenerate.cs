@@ -66,6 +66,7 @@ public class AtmosphericScattingGenerate : MonoBehaviour
     void Start()
     {
         InitData();
+        GenerateLUT();
     }
 
     private void InitData()
@@ -99,6 +100,7 @@ public class AtmosphericScattingGenerate : MonoBehaviour
         ScatteringCS.SetVector(TransmittanceLUTID_Size,TransmittanceLUTSize);
         ScatteringCS.SetInt(_SampleCount,SampleCount);
         ScatteringCS.SetVector(IrradianceSize,IrradianceTexSize);
+        ScatteringCS.SetVector(SCATTERING_TEXTURE_SIZEID,SCATTERING_TEXTURE_SIZE);
         //执行预计算通透度lut
         ScatteringCS.SetTexture(TransmittanceLUTkernel,TransmittanceLUTRWID,TransparencyLUT);
         ScatteringCS.Dispatch(TransmittanceLUTkernel,(int)TransmittanceLUTSize.x/8, (int)TransmittanceLUTSize.y/8,1);
@@ -107,7 +109,6 @@ public class AtmosphericScattingGenerate : MonoBehaviour
         ScatteringCS.SetTexture(Irradiancekernel,IrradianceLUTRWID,IrradianceLUT);
         ScatteringCS.Dispatch(Irradiancekernel,(int)IrradianceTexSize.x/8,(int)IrradianceTexSize.y/8,1);
         //执行预计算单次散射
-        ScatteringCS.SetVector(SCATTERING_TEXTURE_SIZEID,SCATTERING_TEXTURE_SIZE);
         ScatteringCS.SetTexture(PrecomputeScatteringkernel,TransmittanceLUTID,TransparencyLUT);
         ScatteringCS.SetTexture(PrecomputeScatteringkernel,PrecomputeSingleRayleighScatteringLUTRWID,PrecomputeSingleRayleighScatteringLUT);
         ScatteringCS.SetTexture(PrecomputeScatteringkernel,PrecomputeSingleMieScatteringLUTRWID,PrecomputeSingleMieScatteringLUT);
@@ -127,13 +128,14 @@ public class AtmosphericScattingGenerate : MonoBehaviour
         ScatteringCS.SetTexture(PreComputeMultiScatteringKernel,PrecomputeMultiScatteringRWID,PrecomputeMultiScatteringRT);
         ScatteringCS.Dispatch(PreComputeMultiScatteringKernel,(int)PrecomputeScatteringSize.x/8,(int)PrecomputeScatteringSize.y/8,(int)PrecomputeScatteringSize.z/8);
         Shader.SetGlobalTexture(PrecomputeMultiScatteringID,PrecomputeMultiScatteringRT);
-        
+        Shader.SetGlobalTexture(TransmittanceLUTID,TransparencyLUT);
+        Shader.SetGlobalVector(TransmittanceLUTID_Size,TransmittanceLUTSize);
+        Shader.SetGlobalVector(SCATTERING_TEXTURE_SIZEID,SCATTERING_TEXTURE_SIZE);
     }
 
     // Update is called once per frame
     void Update()
     {
-        GenerateLUT();
     }
 
     private void OnDisable()

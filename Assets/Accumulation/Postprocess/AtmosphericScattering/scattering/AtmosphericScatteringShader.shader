@@ -15,7 +15,7 @@ Shader "PostPorcess/AtmosphericScattering"
 
         Pass
         {
-            blend one zero
+            blend one one
             ztest always
             zwrite off
             HLSLPROGRAM
@@ -49,8 +49,7 @@ Shader "PostPorcess/AtmosphericScattering"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
-            
-            
+
 
             v2f vert(appdata v)
             {
@@ -64,28 +63,34 @@ Shader "PostPorcess/AtmosphericScattering"
 
                 return o;
             }
-            float3 GetPrecomputedScattering(float r,float mu, float nu, float mu_s,bool ray_r_mu_intersects_ground)
+
+            float3 GetPrecomputedScattering(float3 camera, float3 viewDir, float3 LightDir,out float3 transmittance)
             {
-                AtmosphereParameter atmosphere = (AtmosphereParameter) 0;
-                atmosphere = InitAtmosphereParameter(atmosphere,6420,6360);
-                float3 mie;
-                return GetCombinedScattering(atmosphere,_MultiScatteringTex,_MultiScatteringTex,r,mu,mu_s,nu,ray_r_mu_intersects_ground,mie);
+                AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+                atmosphere = InitAtmosphereParameter(atmosphere, 6420, 6360);
+                camera /= 1000.0f;
+                camera += float3(0,6360.0f,0);
                 
+                float3 res = GetSkyRadiance(atmosphere, _TransmittanceLUT, _MultiScatteringTex, _MultiScatteringTex, camera,
+                                      -viewDir, LightDir, transmittance);
+                return res * transmittance;
             }
 
             float4 frag(v2f i):SV_Target
             {
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, i.uv);
-                float3 worldPos = GetWorldPositionByDepth(i.uv,depth);
+                float3 worldPos = GetWorldPositionByDepth(i.uv, depth);
                 float4 shadowcoord = TransformWorldToShadowCoord(worldPos);
                 float atten = MainLightRealtimeShadow(shadowcoord);
-                
+
                 float3 viewDir = _WorldSpaceCameraPos - worldPos;
                 viewDir = normalize(viewDir);
-                //问题在这里
-                /*worldPos /= 1000.0f;
-                worldPos += float3(0,6360.0f,0);*/
+                float3 transmittance;
+                float3 res = GetPrecomputedScattering(_WorldSpaceCameraPos, viewDir, lightDir,transmittance);
+                /*//问题在这里
+                worldPos /= 1000.0f;
+                worldPos += float3(0,6360.0f,0);
                 float r = length(worldPos);
                 float3 up = float3(0,1.0f,0);
                 float mu = dot(-viewDir,up)/1.0f;
@@ -99,9 +104,8 @@ Shader "PostPorcess/AtmosphericScattering"
                 else
                 {
                     ray_r_mu_intersects_ground = false;
-                }
-                float3 res = GetPrecomputedScattering(r,mu,nu,mu_s,ray_r_mu_intersects_ground);
-                return float4(res,1);
+                }*/
+                return float4(res*atten, 1);
             }
             ENDHLSL
         }

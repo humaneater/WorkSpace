@@ -15,7 +15,7 @@ MonoBehaviour:
   m_Active: 1
   _setting:
     mEvent: 500
-    strength: 1
+    strength: 1.15
 --- !u!114 &-3141024993344057994
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -159,10 +159,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 86e3cebf559953443add0cb2700a2027, type: 3}
   m_Name: LightShaftFeature
   m_EditorClassIdentifier: 
-  m_Active: 0
+  m_Active: 1
   setting:
     mEvent: 550
-    radius: 0.099
+    radius: 0.09
+    strength: 0.777
 --- !u!114 &2510208397237999177
 MonoBehaviour:
   m_ObjectHideFlags: 0

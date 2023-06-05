@@ -17,8 +17,10 @@ public class LightShaftFeature : ScriptableRendererFeature
         private static readonly int CameraColor = Shader.PropertyToID("_CameraOpaqueTexture");
         private static readonly int MainTex = Shader.PropertyToID("_MainTex");
         private static readonly int _Radius = Shader.PropertyToID("_Radius");
+        private static readonly int _Strength = Shader.PropertyToID("_Strength");
 
         private float Radius;
+        private float mStrength;
 
         private Material mShaftMaterial;
         private ScriptableRenderer _renderer;
@@ -27,11 +29,12 @@ public class LightShaftFeature : ScriptableRendererFeature
         {
         }
 
-        public void Setup(Material mat, ScriptableRenderer renderer,float radius)
+        public void Setup(Material mat, ScriptableRenderer renderer, float radius,float strength)
         {
             mShaftMaterial = mat;
             _renderer = renderer;
             Radius = radius;
+            mStrength = strength;
         }
 
         //light shaft 简单做法就是径向模糊，先做一个试试，大气散射有点复杂
@@ -52,8 +55,9 @@ public class LightShaftFeature : ScriptableRendererFeature
 
         private void DoLightShaft(CameraData cameraData, CommandBuffer cmd)
         {
-            RenderTextureDescriptor descriptor = new RenderTextureDescriptor(cameraData.camera.pixelWidth/2 ,
-                cameraData.camera.pixelHeight/2, RenderTextureFormat.RGB111110Float);
+            mShaftMaterial.SetFloat(_Strength,mStrength);
+            RenderTextureDescriptor descriptor = new RenderTextureDescriptor(cameraData.camera.pixelWidth / 2,
+                cameraData.camera.pixelHeight / 2, RenderTextureFormat.RGB111110Float);
             //第一遍降采样
             cmd.GetTemporaryRT(DownSamplingRT01, descriptor);
             cmd.SetRenderTarget(DownSamplingRT01);
@@ -67,30 +71,30 @@ public class LightShaftFeature : ScriptableRendererFeature
             cmd.SetGlobalTexture(MainTex, DownSamplingRT01);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 0);
             //取亮度
-            cmd.GetTemporaryRT(LuminanceRT,descriptor);
+            cmd.GetTemporaryRT(LuminanceRT, descriptor);
             cmd.SetRenderTarget(LuminanceRT);
             cmd.SetGlobalTexture(MainTex, DownSamplingRT02);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 1);
             //径向模糊
             cmd.GetTemporaryRT(RadialBlurRT01, descriptor);
-            mShaftMaterial.SetFloat(_Radius,Radius);
+            mShaftMaterial.SetFloat(_Radius, Radius);
             cmd.SetRenderTarget(RadialBlurRT01);
             cmd.SetGlobalTexture(MainTex, LuminanceRT);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 2);
             //径向模糊2
-            mShaftMaterial.SetFloat(_Radius,Radius * 2f);
+            mShaftMaterial.SetFloat(_Radius, Radius * 2f);
             cmd.SetRenderTarget(DownSamplingRT02);
             cmd.SetGlobalTexture(MainTex, RadialBlurRT01);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 2);
             //径向模糊3
-            mShaftMaterial.SetFloat(_Radius,Radius * 4f);
+            mShaftMaterial.SetFloat(_Radius, Radius * 4f);
             cmd.SetRenderTarget(DownSamplingRT01);
             cmd.SetGlobalTexture(MainTex, DownSamplingRT02);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 2);
             //放大
             descriptor.width = cameraData.camera.pixelWidth;
             descriptor.height = cameraData.camera.pixelHeight;
-            cmd.GetTemporaryRT(ResultTexutre,descriptor);
+            cmd.GetTemporaryRT(ResultTexutre, descriptor);
             cmd.SetRenderTarget(ResultTexutre);
             cmd.SetGlobalTexture(MainTex, DownSamplingRT01);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 3);
@@ -98,7 +102,7 @@ public class LightShaftFeature : ScriptableRendererFeature
             cmd.SetRenderTarget(_renderer.cameraColorTarget);
             cmd.SetGlobalTexture(MainTex, ResultTexutre);
             cmd.DrawMesh(RenderingUtils.fullscreenMesh, Matrix4x4.identity, mShaftMaterial, 0, 4);
-            
+
             cmd.ReleaseTemporaryRT(LuminanceRT);
             cmd.ReleaseTemporaryRT(DownSamplingRT01);
             cmd.ReleaseTemporaryRT(DownSamplingRT02);
@@ -117,7 +121,12 @@ public class LightShaftFeature : ScriptableRendererFeature
     internal class LightShaftSetting
     {
         [SerializeField] public RenderPassEvent mEvent = RenderPassEvent.AfterRenderingTransparents;
-        [SerializeField][Header("径向模糊距离")][Range(0f,2f)] public float radius = 1;
+
+        [SerializeField] [Header("径向模糊距离")] [Range(0f, 2f)]
+        public float radius = 1;
+
+        [SerializeField] [Header("强度")] [Range(0, 1)]
+        public float strength = 1;
     }
 
     private Material mShaftMat;
@@ -154,7 +163,7 @@ public class LightShaftFeature : ScriptableRendererFeature
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
         if (!GetMaterial()) return;
-        m_ScriptablePass.Setup(mShaftMat, renderer,setting.radius);
+        m_ScriptablePass.Setup(mShaftMat, renderer, setting.radius,setting.strength);
         renderer.EnqueuePass(m_ScriptablePass);
     }
 }

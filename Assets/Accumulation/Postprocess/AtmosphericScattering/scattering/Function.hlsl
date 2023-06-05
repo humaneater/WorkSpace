@@ -23,7 +23,7 @@ float DistanceToBottomAtmosphereBoundary(AtmosphereParameter atmosphere, float r
 
 bool RayIntersectsGround(AtmosphereParameter atmosphere, float r, float mu)
 {
-    return mu < 0.0f && r * r * (mu * mu - 1.0f) + atmosphere.bottom_radius * atmosphere.bottom_radius >= 0.0f;
+    return mu < 0.0f && r * r * (mu * mu - 1.0f) + atmosphere.bottom_radius * atmosphere.bottom_radius > 0.0f;
 }
 
 
@@ -213,7 +213,7 @@ float4 GetScatteringTextureUvwzFromRMuMusNu(AtmosphereParameter atmosphere, floa
         float d = -r_mu - SafeSqrt(discriminant);
         float d_min = r - atmosphere.bottom_radius;
         float d_max = rho;
-        u_mu = 0.5 - 0.5 * GetTextureCoordFromUnitRange(d_max == d_min ? 0.0 : (d - d_min) / (d_max - d_min),
+        u_mu = 0.5f - 0.5f * GetTextureCoordFromUnitRange(d_max == d_min ? 0.0 : (d - d_min) / (d_max - d_min),
                                                         SCATTERING_TEXTURE_SIZE.z / 2);
     }
     else
@@ -247,7 +247,7 @@ float4 GetScatteringTextureUvwzFromRMuMusNu(AtmosphereParameter atmosphere, floa
 void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4 uvwz, out float r, out float mu,
                                           out float mu_s, out float nu, out int ray_r_mu_intersects_ground)
 {
-    uvwz = clamp(uvwz, 0.0, 1.0);
+    //uvwz = clamp(uvwz, 0.0, 1.0);
     // Distance to top atmosphere boundary for a horizontal ray at ground level.
     float H = sqrt(atmosphere.top_radius * atmosphere.top_radius -
         atmosphere.bottom_radius * atmosphere.bottom_radius);
@@ -256,7 +256,7 @@ void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4
     r = sqrt(rho * rho + atmosphere.bottom_radius * atmosphere.bottom_radius);
 
     //视线与地面相交时结果
-    if (uvwz.z <= 0.5)
+    if (uvwz.z < 0.5)
     {
         // Distance to the ground for the ray (r,mu), and its minimum and maximum
         // values over all mu - obtained for (r,-1) and (r,mu_horizon) - from which
@@ -264,8 +264,8 @@ void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4
         float d_min = r - atmosphere.bottom_radius;
         float d_max = rho;
         float d = d_min + (d_max - d_min) * GetUnitRangeFromTextureCoord(
-            1.0 - 2.0 * uvwz.z, SCATTERING_TEXTURE_SIZE.z / 2);
-        mu = d == 0.0 ? float(-1.0) : ClampCosine(-(rho * rho + d * d) / (2.0 * r * d));
+            1.0 - 2.0 * uvwz.z, (int)SCATTERING_TEXTURE_SIZE.z / 2);
+        mu = d == 0 ? float(-1.0) : ClampCosine(-(rho * rho + d * d) / (2.0 * r * d));
         ray_r_mu_intersects_ground = true;
     }
     else
@@ -276,8 +276,8 @@ void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4
         float d_min = atmosphere.top_radius - r;
         float d_max = rho + H;
         float d = d_min + (d_max - d_min) * GetUnitRangeFromTextureCoord(
-            2.0 * uvwz.z - 1.0, SCATTERING_TEXTURE_SIZE.z / 2);
-        mu = d == 0.0 ? float(1.0) : ClampCosine((H * H - rho * rho - d * d) / (2.0 * r * d));
+            2.0 * uvwz.z - 1.0, (int)SCATTERING_TEXTURE_SIZE.z / 2);
+        mu =  d == 0 ? float(1.0) : ClampCosine((H * H - rho * rho - d * d) / (2.0 * r * d));
         ray_r_mu_intersects_ground = false;
     }
     float x_mu_s = GetUnitRangeFromTextureCoord(uvwz.y, SCATTERING_TEXTURE_SIZE.y);
@@ -461,8 +461,11 @@ float3 ComputeScatteringDensity(IN(AtmosphereParameter) atmosphere,IN(Texture2D<
             Number nu2 = dot(omega, omega_i);
             Number rayleigh_density = GetProfileDensity(atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
             Number mie_density = GetProfileDensity(atmosphere.mie_density, r - atmosphere.bottom_radius);
-            rayleigh_mie += incident_radiance * (atmosphere.rayleigh_scattering * rayleigh_density * RayleighPhaseFunction(nu2)
-                    + atmosphere.mie_scattering * mie_density * MiePhaseFunction(atmosphere.mie_phase_function_g, nu2))*domega_i;
+            rayleigh_mie += incident_radiance * (atmosphere.rayleigh_scattering * rayleigh_density *
+                    RayleighPhaseFunction(nu2)
+                    + atmosphere.mie_scattering * mie_density * MiePhaseFunction(atmosphere.mie_phase_function_g, nu2))
+                *
+                domega_i;
         }
     }
     return rayleigh_mie;
@@ -495,7 +498,9 @@ float3 ComputeMultipleScattering(IN(AtmosphereParameter) atmosphere,IN(Texture2D
         Number mu_s_i = ClampCosine((r * mu_s + d_i * nu) / r_i);
 
         // The Rayleigh and Mie multiple scattering at the current sample point.
-        float3 rayleigh_mie_i = GetScattering(atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,ray_r_mu_intersects_ground)* GetTransmittance(atmosphere, transmittance_texture, r, mu, d_i, ray_r_mu_intersects_ground)* dx;
+        float3 rayleigh_mie_i = GetScattering(atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
+                                              ray_r_mu_intersects_ground) * GetTransmittance(
+            atmosphere, transmittance_texture, r, mu, d_i, ray_r_mu_intersects_ground) * dx;
 
         // Sample weight (from the trapezoidal rule).
         Number weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
@@ -517,7 +522,6 @@ float3 ComputeScatteringDensityTexture(IN(AtmosphereParameter) atmosphere,IN(Tex
     Number mu_s;
     Number nu;
     bool ray_r_mu_intersects_ground;
-
     GetRMuMuSNuFromScatteringTextureFragCoord(atmosphere, frag_coord,
                                               r, mu, mu_s, nu, ray_r_mu_intersects_ground);
     return ComputeScatteringDensity(atmosphere, transmittance_texture, single_rayleigh_scattering_texture,
@@ -656,6 +660,51 @@ float3 GetCombinedScattering(IN(AtmosphereParameter) atmosphere,IN(Texture3D<flo
     float3 scattering = float3(combined_scattering.xyz);
     single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
     return scattering;
+}
+
+float3 GetSkyRadiance(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) transmittance_texture,
+                      IN(Texture3D<float4>) scattering_texture,IN(Texture3D<float4>) single_mie_scattering_texture,
+                      float3 camera, float3 view_ray,IN(float3) sun_direction,
+                      OUT(float3) transmittance)
+{
+    // Compute the distance to the top atmosphere boundary along the view ray,
+    // assuming the viewer is in space (or NaN if the view ray does not intersect
+    // the atmosphere).
+    Length r = length(camera);
+    Length rmu = dot(camera, view_ray);
+    Length distance_to_top_atmosphere_boundary = -rmu - sqrt(
+        rmu * rmu - r * r + atmosphere.top_radius * atmosphere.top_radius);
+    // If the viewer is in space and the view ray intersects the atmosphere, move
+    // the viewer to the top atmosphere boundary (along the view ray):
+
+    if (distance_to_top_atmosphere_boundary > 0.0)
+    {
+        camera = camera + view_ray * distance_to_top_atmosphere_boundary;
+        r = atmosphere.top_radius;
+        rmu += distance_to_top_atmosphere_boundary;
+    }
+    else if (r > atmosphere.top_radius)
+    {
+        // If the view ray does not intersect the atmosphere, simply return 0.
+        transmittance = 1.0;
+        return 0;
+    }
+    // Compute the r, mu, mu_s and nu parameters needed for the texture lookups.
+    Number mu = rmu / r;
+    Number mu_s = dot(camera, sun_direction) / r;
+    Number nu = dot(view_ray, sun_direction);
+    bool ray_r_mu_intersects_ground = RayIntersectsGround(atmosphere, r, mu);
+
+    
+    transmittance = ray_r_mu_intersects_ground
+                        ? 0.0
+                        : GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, mu);
+    float3 single_mie_scattering;
+    float3 scattering;
+    scattering = GetCombinedScattering(atmosphere, scattering_texture, single_mie_scattering_texture, r, mu, mu_s, nu,
+                                       ray_r_mu_intersects_ground, single_mie_scattering);
+    return scattering * RayleighPhaseFunction(nu) + single_mie_scattering *
+        MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
 }
 
 

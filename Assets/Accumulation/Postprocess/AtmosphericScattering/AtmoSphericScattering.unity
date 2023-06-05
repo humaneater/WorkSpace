@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.1669449, g: 0.19691613, b: 0.2269277, a: 1}
+  m_IndirectSpecularColor: {r: 0.18358746, g: 0.22910276, b: 0.305443, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -248,8 +248,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 210200686}
-  m_LocalRotation: {x: -0.0011929497, y: -0.21694344, z: -0.00011415128, w: 0.9761835}
-  m_LocalPosition: {x: 40.068054, y: 42.914047, z: -160.21082}
+  m_LocalRotation: {x: -0.027062904, y: -0.41221824, z: -0.012196236, w: 0.9106014}
+  m_LocalPosition: {x: 279.72238, y: 193.38625, z: -216.73244}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -346,6 +346,7 @@ GameObject:
   - component: {fileID: 1998895069}
   - component: {fileID: 1998895068}
   - component: {fileID: 1998895070}
+  - component: {fileID: 1998895071}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -422,14 +423,14 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1998895067}
-  m_LocalRotation: {x: 0.02324172, y: 0.9366285, z: -0.06327215, w: 0.3437784}
-  m_LocalPosition: {x: 0, y: 167.25272, z: 709.3605}
+  m_LocalRotation: {x: 0.105370946, y: 0.8920138, z: -0.27245528, w: 0.34492964}
+  m_LocalPosition: {x: -142.44476, y: 233.3847, z: 288.71075}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 1
-  m_LocalEulerAnglesHint: {x: 7.73, y: 139.69, z: 0.002}
+  m_LocalEulerAnglesHint: {x: 33.97, y: 137.719, z: 0.002}
 --- !u!114 &1998895070
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -450,6 +451,21 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
+--- !u!114 &1998895071
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1998895067}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63db3603c2a657c4496122898e3e0e93, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  direction: {x: 0, y: 0, z: 0}
+  speed: -3.2
+  light: {fileID: 1998895069}
 --- !u!1 &2021671669
 GameObject:
   m_ObjectHideFlags: 0
