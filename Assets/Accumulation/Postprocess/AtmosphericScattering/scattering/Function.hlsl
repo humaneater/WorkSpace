@@ -23,7 +23,7 @@ float DistanceToBottomAtmosphereBoundary(AtmosphereParameter atmosphere, float r
 
 bool RayIntersectsGround(AtmosphereParameter atmosphere, float r, float mu)
 {
-    return mu < 0.0f && r * r * (mu * mu - 1.0f) + atmosphere.bottom_radius * atmosphere.bottom_radius > 0.0f;
+    return mu < 0.0f && r * r * (mu * mu - 1.0f) + atmosphere.bottom_radius * atmosphere.bottom_radius >= 0.0f;
 }
 
 
@@ -214,7 +214,7 @@ float4 GetScatteringTextureUvwzFromRMuMusNu(AtmosphereParameter atmosphere, floa
         float d_min = r - atmosphere.bottom_radius;
         float d_max = rho;
         u_mu = 0.5f - 0.5f * GetTextureCoordFromUnitRange(d_max == d_min ? 0.0 : (d - d_min) / (d_max - d_min),
-                                                        SCATTERING_TEXTURE_SIZE.z / 2);
+                                                          SCATTERING_TEXTURE_SIZE.z / 2);
     }
     else
     {
@@ -277,7 +277,7 @@ void GetRMuMuSNuFromScatteringTextureUvwz(AtmosphereParameter atmosphere, float4
         float d_max = rho + H;
         float d = d_min + (d_max - d_min) * GetUnitRangeFromTextureCoord(
             2.0 * uvwz.z - 1.0, (int)SCATTERING_TEXTURE_SIZE.z / 2);
-        mu =  d == 0 ? float(1.0) : ClampCosine((H * H - rho * rho - d * d) / (2.0 * r * d));
+        mu = d == 0 ? float(1.0) : ClampCosine((H * H - rho * rho - d * d) / (2.0 * r * d));
         ray_r_mu_intersects_ground = false;
     }
     float x_mu_s = GetUnitRangeFromTextureCoord(uvwz.y, SCATTERING_TEXTURE_SIZE.y);
@@ -695,7 +695,7 @@ float3 GetSkyRadiance(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) t
     Number nu = dot(view_ray, sun_direction);
     bool ray_r_mu_intersects_ground = RayIntersectsGround(atmosphere, r, mu);
 
-    
+
     transmittance = ray_r_mu_intersects_ground
                         ? 0.0
                         : GetTransmittanceToTopAtmosphereBoundary(atmosphere, transmittance_texture, r, mu);
@@ -705,6 +705,74 @@ float3 GetSkyRadiance(IN(AtmosphereParameter) atmosphere,IN(Texture2D<float4>) t
                                        ray_r_mu_intersects_ground, single_mie_scattering);
     return scattering * RayleighPhaseFunction(nu) + single_mie_scattering *
         MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
+}
+
+float3 GetSkyRadianceToPoint(
+    IN(AtmosphereParameter) atmosphere,
+    IN(Texture2D<float4>) transmittance_texture,
+    IN(Texture3D<float4>) scattering_texture,
+    IN(Texture3D<float4>) single_mie_scattering_texture,
+    float3 camera, IN(float3) worldPos, Length shadow_length,
+    IN(float3) sun_direction, OUT(float3) transmittance)
+{
+    // Compute the distance to the top atmosphere boundary along the view ray,
+    // assuming the viewer is in space (or NaN if the view ray does not intersect
+    // the atmosphere).
+    float3 view_ray = normalize(worldPos - camera);
+    Length r = length(camera);
+    Length rmu = dot(camera, view_ray);
+    Length distance_to_top_atmosphere_boundary = -rmu -
+        sqrt(rmu * rmu - r * r + atmosphere.top_radius * atmosphere.top_radius);
+    // If the viewer is in space and the view ray intersects the atmosphere, move
+    // the viewer to the top atmosphere boundary (along the view ray):
+    if (distance_to_top_atmosphere_boundary > 0.0)
+    {
+        camera = camera + view_ray * distance_to_top_atmosphere_boundary;
+        r = atmosphere.top_radius;
+        rmu += distance_to_top_atmosphere_boundary;
+    }
+
+    // Compute the r, mu, mu_s and nu parameters for the first texture lookup.
+    Number mu = rmu / r;
+    Number mu_s = dot(camera, sun_direction) / r;
+    Number nu = dot(view_ray, sun_direction);
+    Length d = length(worldPos - camera);
+    bool ray_r_mu_intersects_ground = RayIntersectsGround(atmosphere, r, mu);
+
+    transmittance = GetTransmittance(atmosphere, transmittance_texture,
+                                     r, mu, d, ray_r_mu_intersects_ground);
+
+    float3 single_mie_scattering;
+    float3 scattering = GetCombinedScattering(atmosphere, scattering_texture, single_mie_scattering_texture, r, mu,
+                                              mu_s, nu, ray_r_mu_intersects_ground, single_mie_scattering);
+
+    // Compute the r, mu, mu_s and nu parameters for the second texture lookup.
+    // If shadow_length is not 0 (case of light shafts), we want to ignore the
+    // scattering along the last shadow_length meters of the view ray, which we
+    // do by subtracting shadow_length from d (this way scattering_p is equal to
+    // the S|x_s=x_0-lv term in Eq. (17) of our paper).
+    d = max(d - shadow_length, 0.0);
+    Length r_p = ClampRadius(atmosphere, sqrt(d * d + 2.0 * r * mu * d + r * r));
+    Number mu_p = (r * mu + d) / r_p;
+    Number mu_s_p = (r * mu_s + d * nu) / r_p;
+
+    float3 single_mie_scattering_p;
+    float3 scattering_p = GetCombinedScattering(
+        atmosphere, scattering_texture, single_mie_scattering_texture,
+        r_p, mu_p, mu_s_p, nu, ray_r_mu_intersects_ground,
+        single_mie_scattering_p);
+
+    scattering = scattering - transmittance * scattering_p;
+    single_mie_scattering = single_mie_scattering - transmittance * single_mie_scattering_p;
+    #ifdef COMBINED_SCATTERING_TEXTURES
+    single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, float4(scattering, single_mie_scattering.r));
+    #endif
+
+    // Hack to avoid rendering artifacts when the sun is below the horizon.
+    single_mie_scattering = single_mie_scattering * smoothstep(Number(0.0), Number(0.01), mu_s);
+
+    return scattering * RayleighPhaseFunction(nu) + single_mie_scattering * MiePhaseFunction(
+        atmosphere.mie_phase_function_g, nu);
 }
 
 

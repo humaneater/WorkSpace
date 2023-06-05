@@ -19,6 +19,7 @@ Shader "PostPorcess/AtmosphericScattering"
             ztest always
             zwrite off
             HLSLPROGRAM
+            #define COMBINED_SCATTERING_TEXTURES 1
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
@@ -64,16 +65,29 @@ Shader "PostPorcess/AtmosphericScattering"
                 return o;
             }
 
-            float3 GetPrecomputedScattering(float3 camera, float3 viewDir, float3 LightDir,out float3 transmittance)
+            float3 GetPrecomputedScattering(AtmosphereParameter atmosphere, float3 camera, float3 viewDir,
+                                            float3 LightDir, out float3 transmittance)
             {
-                AtmosphereParameter atmosphere = (AtmosphereParameter)0;
-                atmosphere = InitAtmosphereParameter(atmosphere, 6420, 6360);
                 camera /= 1000.0f;
-                camera += float3(0,6360.0f,0);
-                
-                float3 res = GetSkyRadiance(atmosphere, _TransmittanceLUT, _MultiScatteringTex, _MultiScatteringTex, camera,
-                                      -viewDir, LightDir, transmittance);
-                return res * transmittance;
+                camera += float3(0, 6360.0f, 0);
+
+                float3 res = GetSkyRadiance(atmosphere, _TransmittanceLUT, _MultiScatteringTex, _MultiScatteringTex,
+                                            camera,
+                                            viewDir, LightDir, transmittance);
+                return res;
+            }
+
+            float3 GetPrecomputedScatteringToPoint(AtmosphereParameter atmosphere, float3 cameraPos, float3 worldPos,
+                                                   float3 lightDir, out float3 transmittance)
+            {
+                cameraPos /= 1000.0f;
+                cameraPos += float3(0, 6360.0f, 0);
+                worldPos /= 1000.0f;
+                worldPos += float3(0, 6360.0f, 0);
+                float3 res = GetSkyRadianceToPoint(atmosphere, _TransmittanceLUT, _MultiScatteringTex,
+                                                   _MultiScatteringTex, cameraPos, worldPos, 0, lightDir,
+                                                   transmittance);
+                return res;
             }
 
             float4 frag(v2f i):SV_Target
@@ -84,28 +98,27 @@ Shader "PostPorcess/AtmosphericScattering"
                 float4 shadowcoord = TransformWorldToShadowCoord(worldPos);
                 float atten = MainLightRealtimeShadow(shadowcoord);
 
-                float3 viewDir = _WorldSpaceCameraPos - worldPos;
-                viewDir = normalize(viewDir);
+                float3 viewRay = worldPos - _WorldSpaceCameraPos;
+                viewRay = normalize(viewRay);
                 float3 transmittance;
-                float3 res = GetPrecomputedScattering(_WorldSpaceCameraPos, viewDir, lightDir,transmittance);
-                /*//问题在这里
-                worldPos /= 1000.0f;
-                worldPos += float3(0,6360.0f,0);
-                float r = length(worldPos);
-                float3 up = float3(0,1.0f,0);
-                float mu = dot(-viewDir,up)/1.0f;
-                float mu_s = dot(worldPos,lightDir)/r;
-                float nu = dot(worldPos,-viewDir)/r;
-                bool ray_r_mu_intersects_ground;
-                if (depth >0.0001f)
+                float3 res = 0;
+                AtmosphereParameter atmosphere = (AtmosphereParameter)0;
+                atmosphere = InitAtmosphereParameter(atmosphere, 6420, 6360);
+                if (depth == 0.0f)
                 {
-                    ray_r_mu_intersects_ground = true;
+                    res = GetPrecomputedScattering(atmosphere, _WorldSpaceCameraPos, viewRay, lightDir, transmittance);
+                    res *= transmittance;
                 }
                 else
                 {
-                    ray_r_mu_intersects_ground = false;
-                }*/
-                return float4(res*atten, 1);
+                    res = GetPrecomputedScatteringToPoint(atmosphere, _WorldSpaceCameraPos, worldPos, lightDir,
+                                                          transmittance);
+                    res *= transmittance;
+                    res *= 5.0f;
+                }
+
+
+                return float4(res, 1);
             }
             ENDHLSL
         }
