@@ -21,6 +21,20 @@ float3 GetWorldPositionByDepth(float2 uv, float depth)
     return ndcSpace.xyz;
 }
 
+inline SurfaceData InitSurfaceData(float3 albedo,float metallic,float roughness,float3 normalTS)
+{
+    SurfaceData data = (SurfaceData)0;
+    data.albedo = albedo;
+    data.alpha = 1;
+    data.metallic = metallic;
+    data.smoothness = 1- roughness;
+    data.specular = 0;
+    data.normalTS = normalTS;
+    data.occlusion = 1;
+    return data;
+    
+}
+
 float Unity_Dither_float4(float4 ScreenPosition)
 {
     uint2 uv = ScreenPosition.xy;

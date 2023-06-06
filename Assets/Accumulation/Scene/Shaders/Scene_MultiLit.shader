@@ -4,6 +4,10 @@ Shader "PostProcess/Scene_MultiLit"
     {
         _MainTex ("Texture", 2D) = "white" {}
         _NormalTex("法线贴图",2D) = "bump"{}
+        _RoughnessTex("粗糙度贴图",2D) = "white"{}
+        _Roughness("粗糙度",range(0,1)) = 0
+        _Metallic("金属都",range(0,1)) = 0
+        _MetallicTex("金属都贴图",2D) = "white"{}
     }
     SubShader
     {
@@ -14,12 +18,59 @@ Shader "PostProcess/Scene_MultiLit"
         {
             cull off
             HLSLPROGRAM
+            // -------------------------------------
+            // Material Keywords
+            #pragma shader_feature_local _NORMALMAP
+            #pragma shader_feature_local _PARALLAXMAP
+            #pragma shader_feature_local _RECEIVE_SHADOWS_OFF
+            #pragma shader_feature_local _ _DETAIL_MULX2 _DETAIL_SCALED
+            #pragma shader_feature_local_fragment _SURFACE_TYPE_TRANSPARENT
+            #pragma shader_feature_local_fragment _ALPHATEST_ON
+            #pragma shader_feature_local_fragment _ALPHAPREMULTIPLY_ON
+            #pragma shader_feature_local_fragment _EMISSION
+            #pragma shader_feature_local_fragment _METALLICSPECGLOSSMAP
+            #pragma shader_feature_local_fragment _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+            #pragma shader_feature_local_fragment _OCCLUSIONMAP
+            #pragma shader_feature_local_fragment _SPECULARHIGHLIGHTS_OFF
+            #pragma shader_feature_local_fragment _ENVIRONMENTREFLECTIONS_OFF
+            #pragma shader_feature_local_fragment _SPECULAR_SETUP
+
+            // -------------------------------------
+            // Universal Pipeline keywords
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
+            #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
+            #pragma multi_compile_fragment _ _DBUFFER_MRT1 _DBUFFER_MRT2 _DBUFFER_MRT3
+            #pragma multi_compile_fragment _ _LIGHT_LAYERS
+            #pragma multi_compile_fragment _ _LIGHT_COOKIES
+            #pragma multi_compile _ _CLUSTERED_RENDERING
+            
+            // -------------------------------------
+            // Unity defined keywords
+            #pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
+            #pragma multi_compile _ SHADOWS_SHADOWMASK
+            #pragma multi_compile _ DIRLIGHTMAP_COMBINED
+            #pragma multi_compile _ LIGHTMAP_ON
+            #pragma multi_compile _ DYNAMICLIGHTMAP_ON
+            #pragma multi_compile_fog
+            #pragma multi_compile_fragment _ DEBUG_DISPLAY
+
+            //--------------------------------------
+            // GPU Instancing
+            #pragma multi_compile_instancing
+            #pragma instancing_options renderinglayer
+            #pragma multi_compile _ DOTS_INSTANCING_ON
             #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
             
             #pragma vertex vert
             #pragma fragment frag
 
-            sampler2D _NormalTex;
+            sampler2D _NormalTex,_MainTex,_MetallicTex,_RoughnessTex;
+            float _Roughness,_Metallic;
 
             struct appdata
             {
@@ -61,14 +112,19 @@ Shader "PostProcess/Scene_MultiLit"
 
             float4 frag(v2f input) : SV_Target
             {
+                float3 albedo = tex2D(_MainTex,input.uv);
+                float metallic = tex2D(_MetallicTex,input.uv);
+                float roughness = tex2D(_RoughnessTex,input.uv);
                 float3 worldPos = HGetWorldPosTBN(input);
-                float3 normalMap = tex2D(_NormalTex,input.uv);
-                normalMap = HunpackNormal(normalMap);
+                float3 normalDir = tex2D(_NormalTex,input.uv);
+                float3 normalMap = HunpackNormal(normalDir);
                 float3x3 tbn = {input.tbn[0].xyz,input.tbn[1].xyz,input.tbn[2].xyz};
                 normalMap = normalize(mul(normalMap,tbn));
                 InputData data = InitInputData(worldPos,normalMap,input.viewDir,input.ambient);
+                SurfaceData surface = InitSurfaceData(albedo,_Metallic,_Roughness,normalDir);
                 
-                return float4(normalMap,1);
+                float3 res = UniversalFragmentPBR(data,surface);
+                return float4(res,1);
             }
             // make fog work
             
