@@ -1558,6 +1558,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   lightGroup: {fileID: 1848414018}
+  LightGetheringCS: {fileID: 7200000, guid: 128e189a9927b4841bcfda491562008b, type: 3}
+  TextureSize: {x: 256, y: 256, z: 32}
 --- !u!4 &1848414020
 Transform:
   m_ObjectHideFlags: 0
