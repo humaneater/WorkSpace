@@ -1,4 +1,4 @@
-Shader "PostProcess/Scene_MultiLit"
+Shader "Scene/MultiLit"
 {
     Properties
     {
@@ -11,7 +11,10 @@ Shader "PostProcess/Scene_MultiLit"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags
+        {
+            "RenderType"="Opaque"
+        }
         LOD 100
 
         Pass
@@ -37,8 +40,8 @@ Shader "PostProcess/Scene_MultiLit"
 
             // -------------------------------------
             // Universal Pipeline keywords
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
-            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            // #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            // #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
@@ -48,7 +51,7 @@ Shader "PostProcess/Scene_MultiLit"
             #pragma multi_compile_fragment _ _LIGHT_LAYERS
             #pragma multi_compile_fragment _ _LIGHT_COOKIES
             #pragma multi_compile _ _CLUSTERED_RENDERING
-            
+
             // -------------------------------------
             // Unity defined keywords
             #pragma multi_compile _ LIGHTMAP_SHADOW_MIXING
@@ -65,13 +68,15 @@ Shader "PostProcess/Scene_MultiLit"
             #pragma instancing_options renderinglayer
             #pragma multi_compile _ DOTS_INSTANCING_ON
             #include "Assets/Accumulation/ShaderLibrary/CommonFunctions.hlsl"
-            
+
             #pragma vertex vert
             #pragma fragment frag
-
-            sampler2D _NormalTex,_MainTex,_MetallicTex,_RoughnessTex;
-            float _Roughness,_Metallic;
-
+            struct LightsInfo
+            {
+                float4 color;
+                float4 position;
+                float4 direction;
+            };
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -81,7 +86,6 @@ Shader "PostProcess/Scene_MultiLit"
                 float2 texcoord : TEXCOORD0;
                 float2 texcoord2 : TEXCOORD1;
             };
-
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -90,19 +94,26 @@ Shader "PostProcess/Scene_MultiLit"
                 half3 viewDir : TEXCOORD2;
                 half3 ambient : TEXCOORD3;
                 half4 tbn[3] : TEXCOORD4;
-                
             };
+
+            sampler2D _NormalTex, _MainTex, _MetallicTex, _RoughnessTex;
+            float _Roughness, _Metallic;
+            float4 _MapOffset;
+            Texture3D<float4> _LightIndexTex;
+            SamplerState sampler_clamp_point_LightIndexTex;
+            StructuredBuffer<LightsInfo> _LightsInfo;
+
             v2f vert(appdata input)
             {
-                v2f o = (v2f) 0;
+                v2f o = (v2f)0;
                 float3 worldPos = TransformObjectToWorld(input.vertex);
                 float3 wNormal = TransformObjectToWorldNormal(input.normal);
                 float3 wTangent = TransformObjectToWorldDir(input.tangent);
                 float sign = unity_WorldTransformParams.w * input.tangent.w;
-                float3 wBiNormal = cross(wNormal,wTangent) * sign;
-                o.tbn[0] = float4(wTangent.xyz,worldPos.x);
-                o.tbn[1] = float4(wBiNormal.xyz,worldPos.y);
-                o.tbn[2] = float4(wNormal.xyz,worldPos.z);
+                float3 wBiNormal = cross(wNormal, wTangent) * sign;
+                o.tbn[0] = float4(wTangent.xyz, worldPos.x);
+                o.tbn[1] = float4(wBiNormal.xyz, worldPos.y);
+                o.tbn[2] = float4(wNormal.xyz, worldPos.z);
                 o.pos = TransformWorldToHClip(worldPos);
                 o.uv = input.texcoord;
                 o.viewDir = _WorldSpaceCameraPos - worldPos;
@@ -112,28 +123,36 @@ Shader "PostProcess/Scene_MultiLit"
 
             float4 frag(v2f input) : SV_Target
             {
-                float3 albedo = tex2D(_MainTex,input.uv);
-                float metallic = tex2D(_MetallicTex,input.uv);
-                float roughness = tex2D(_RoughnessTex,input.uv);
+                float3 albedo = tex2D(_MainTex, input.uv);
+                float metallic = tex2D(_MetallicTex, input.uv);
+                float roughness = tex2D(_RoughnessTex, input.uv);
                 float3 worldPos = HGetWorldPosTBN(input);
-                float3 normalDir = tex2D(_NormalTex,input.uv);
+                float3 normalDir = tex2D(_NormalTex, input.uv);
                 float3 normalMap = HunpackNormal(normalDir);
-                float3x3 tbn = {input.tbn[0].xyz,input.tbn[1].xyz,input.tbn[2].xyz};
-                normalMap = normalize(mul(normalMap,tbn));
-                InputData data = InitInputData(worldPos,normalMap,input.viewDir,input.ambient);
-                SurfaceData surface = InitSurfaceData(albedo,_Metallic,_Roughness,normalDir);
-                
-                float3 res = UniversalFragmentPBR(data,surface);
-                return float4(res,1);
+                float3x3 tbn = {input.tbn[0].xyz, input.tbn[1].xyz, input.tbn[2].xyz};
+                normalMap = normalize(mul(normalMap, tbn));
+                InputData data = InitInputData(worldPos, normalMap, input.viewDir, input.ambient);
+                SurfaceData surface = InitSurfaceData(albedo, _Metallic, _Roughness, normalDir);
+                float3 res = UniversalFragmentPBR(data, surface);
+
+                //自定义的额外光源光照，先读图
+                float3 uvw = worldPos - _MapOffset.xyz;
+                uvw = float3(uvw.x/256,uvw.z/256,uvw.y/32);
+                float4 index = _LightIndexTex.SampleLevel(sampler_clamp_point_LightIndexTex,uvw,0);
+                float3 color = length(_LightsInfo[(uint)index.x].position - worldPos)/200 + length(_LightsInfo[(uint)index.y].position - worldPos)/200 + length(_LightsInfo[(uint)index.z].position - worldPos)/200;
+                return float4( color, 1);
             }
+
             // make fog work
-            
             ENDHLSL
         }
-         Pass
+        Pass
         {
             Name "ShadowCaster"
-            Tags{"LightMode" = "ShadowCaster"}
+            Tags
+            {
+                "LightMode" = "ShadowCaster"
+            }
 
             ZWrite On
             ZTest LEqual
@@ -167,10 +186,13 @@ Shader "PostProcess/Scene_MultiLit"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/ShadowCasterPass.hlsl"
             ENDHLSL
         }
-         Pass
+        Pass
         {
             Name "DepthOnly"
-            Tags{"LightMode" = "DepthOnly"}
+            Tags
+            {
+                "LightMode" = "DepthOnly"
+            }
 
             ZWrite On
             ColorMask 0
@@ -202,7 +224,10 @@ Shader "PostProcess/Scene_MultiLit"
         Pass
         {
             Name "DepthNormals"
-            Tags{"LightMode" = "DepthNormals"}
+            Tags
+            {
+                "LightMode" = "DepthNormals"
+            }
 
             ZWrite On
             Cull[_Cull]

@@ -1,30 +1,35 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel DrawIndexTexture
 
-// Create a RenderTexture with enableRandomWrite flag and set it
-// with cs.SetTexture
+struct LightsInfo
+{
+    float4 color;
+    float4 position;
+    float4 direction;
+};
 RWTexture3D<float4> _LightIndexTex;
 int _LightListCount;
 float3 _LightIndexTex_Size;
 float3 _MapOffset;
-StructuredBuffer<float4> _LightsPosition;
+StructuredBuffer<LightsInfo> _LightsInfo;
 
 
 [numthreads(8,8,8)]
 void DrawIndexTexture (uint3 id : SV_DispatchThreadID)
 {
     //需要排序，得到位置和方向信息之后，首先根据位置排序吧，不妨用世界位置，也就是id的xy 作为检索依据，找到最近的几个index，index就是y*size.x+x;
-    float3 worldPos = float3(id.xyz) - _MapOffset;
+    float3 worldPos = float3(id.xzy) +_MapOffset;
     float indexSortID[4] = {0,0,0,0};
-    float distanceSort[4] = {256,256,256,256};
+    float distanceSort[4] = {1000,1000,1000,1000};
     //思路：想要拿到前四个灯的id，需要做一个只有列表的排序，借助两个中间量，因为我需要的是ID，但是又需要有距离判断，所以得到距离之后循环4次
     //先通过距离数组判断是不是需要替换，如果需要替换，把当前数组id替换，并挤到下一个数组id，期间需要用一个bool判断是否终止替换，这里的替换是一个单次过程
     //也就是平移数组的过程必然伴随着
     for (int i = 0; i < _LightListCount; i++)
     {
         bool isOver = false;
-        float3 lightPos = _LightsPosition[i].xyz;
-        float lightToWorldLength = length(lightPos-worldPos);
+        float3 lightPos = _LightsInfo[i].position.xyz;
+        float lightToWorldLength = length(lightPos.xyz-worldPos);
+      
         for (int j = 0;j < 4; j++)
         {
             if (!isOver)
@@ -32,6 +37,7 @@ void DrawIndexTexture (uint3 id : SV_DispatchThreadID)
                 if (lightToWorldLength < distanceSort[j])
                 {
                     isOver = true;
+                    [unroll]
                    for (int w = 3; w > j; w--)
                    {
                        indexSortID[w] = indexSortID[w-1];
@@ -46,5 +52,5 @@ void DrawIndexTexture (uint3 id : SV_DispatchThreadID)
     }
 
     
-    _LightIndexTex[id.xyz] = float4(indexSortID[0],indexSortID[1],indexSortID[2],1);
+    _LightIndexTex[id.xyz] = float4(indexSortID[0],indexSortID[1],indexSortID[2],indexSortID[3]);
 }
