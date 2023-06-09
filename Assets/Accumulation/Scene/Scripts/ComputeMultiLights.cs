@@ -57,6 +57,8 @@ public class ComputeMultiLights : MonoBehaviour
     private static readonly int LightIndexRTID = Shader.PropertyToID("_LightIndexTex");
     [SerializeField]private Vector3 TextureSize = new Vector3(256,256,32);
     private static readonly int LightTextureSize = Shader.PropertyToID("_LightIndexTex_Size");
+    [SerializeField] private Vector3 MapOffset;
+    private static readonly int MapOffsetID = Shader.PropertyToID("_MapOffset"); 
     
     
 
@@ -92,16 +94,16 @@ public class ComputeMultiLights : MonoBehaviour
             new RenderTextureDescriptor((int)TextureSize.x, (int)TextureSize.y, RenderTextureFormat.ARGB32);
         descriptor.enableRandomWrite = true;
         //思考：是不是3d也可以呢？如果本来用的就是point，那么3d又有什么消耗呢？
-        //descriptor.dimension = TextureDimension.Tex3D;
+        descriptor.dimension = TextureDimension.Tex3D;
         LightIndexRT = new RenderTexture(descriptor);
     }
 
     private void DrawIndexTexture()
     {
         DrawIndexTextureKernel = LightGetheringCS.FindKernel(DrawkernelString);
-        LightPositionBuffer = new ComputeBuffer(lightNumber, sizeof(float) * 4, ComputeBufferType.Default);
+        LightPositionBuffer ??= new ComputeBuffer(lightNumber, sizeof(float) * 4, ComputeBufferType.Default);
         mLightPositionList.Clear();
-        LightDirectionBuffer = new ComputeBuffer(lightNumber, sizeof(float) * 4, ComputeBufferType.Default);
+        LightDirectionBuffer ??= new ComputeBuffer(lightNumber, sizeof(float) * 4, ComputeBufferType.Default);
         mLightDirectionList.Clear();
         for (int i = 0; i < lightNumber; i++)
         {
@@ -111,11 +113,12 @@ public class ComputeMultiLights : MonoBehaviour
         LightPositionBuffer.SetData(mLightPositionList);
         LightDirectionBuffer.SetData(mLightDirectionList);
         //向cs里输入需要的数据
+        LightGetheringCS.SetVector(LightTextureSize,TextureSize);
+        LightGetheringCS.SetVector(MapOffsetID,MapOffset);
         LightGetheringCS.SetBuffer(DrawIndexTextureKernel,ShaderLightPositionList,LightPositionBuffer);
         LightGetheringCS.SetBuffer(DrawIndexTextureKernel,ShaderLishgtDirectionList,LightDirectionBuffer);
         LightGetheringCS.SetTexture(DrawIndexTextureKernel,LightIndexRTID,LightIndexRT);
-        LightGetheringCS.SetVector(LightTextureSize,TextureSize);
-        LightGetheringCS.Dispatch(DrawIndexTextureKernel,(int)(TextureSize.x/8),(int)(TextureSize.y/8),1);
+        LightGetheringCS.Dispatch(DrawIndexTextureKernel,(int)TextureSize.x/8,(int)TextureSize.y/8,(int)TextureSize.z/8);
     }
 
     private void Update()
@@ -124,6 +127,11 @@ public class ComputeMultiLights : MonoBehaviour
     }
 
 
+    
+    /// <summary>
+    /// 用一个协程判断是否需要更新
+    /// </summary>
+    /// <returns></returns>
     private IEnumerator CheckIfLightChange()
     {
         while (mLightUpdateTrigger)
@@ -180,5 +188,15 @@ public class ComputeMultiLights : MonoBehaviour
     private void OnDisable()
     {
         LightIndexRT.Release();
+        if (LightPositionBuffer != null)
+        {
+            LightPositionBuffer.Release();
+        }
+
+        if (LightDirectionBuffer != null)
+        {
+            LightDirectionBuffer.Release();
+        }
+        
     }
 }
