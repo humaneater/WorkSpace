@@ -4,35 +4,95 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+[ExecuteAlways]
 public class ComputeMultiLights : MonoBehaviour
 {
-    //拟定一个灯光结构体，因为要变化所以就用class制定了，不知道会不会很大
-    private class LightData
+    //灯光结构体，是否可以放到别的地方
+    private struct LightsInfo
     {
-        private Color lightColor;
-        private float _intensity { get; set; }
-        private float spotAngle;
-        private float innerAngle;
+        public Color LightColor;
+        public Vector4 LightPosition;
+        public Vector4 LightDirection;
+        public Vector4 LightAttenuation;
 
-        public void SetIntensity(float value)
+        static Vector4 k_DefaultLightAttenuation = new Vector4(0.0f, 1.0f, 0.0f, 1.0f);
+
+        public LightsInfo(Color color, Vector4 position, Vector4 direction, float lightRange, LightType type,
+            float spotAngle = 0, float innerSpotAngle = 0)
         {
-            _intensity = value;
+            LightColor = color;
+            LightPosition = position;
+            LightDirection = direction;
+            //根据range得到这个attnuation
+            GetAttnuationByRange(lightRange, out LightAttenuation, type, spotAngle, innerSpotAngle);
         }
 
-        public float GetIntensity()
+        private static void GetAttnuationByRange(float range, out Vector4 LightAttnuation, LightType type,
+            float spotAngle = 0, float innerSpotAngle = 0)
         {
-            return _intensity;
+            LightAttnuation = k_DefaultLightAttenuation;
+            //抄的unity的衰减判断
+            // Light attenuation in universal matches the unity vanilla one.
+            // attenuation = 1.0 / distanceToLightSqr
+            // We offer two different smoothing factors.
+            // The smoothing factors make sure that the light intensity is zero at the light range limit.
+            // The first smoothing factor is a linear fade starting at 80 % of the light range.
+            // smoothFactor = (lightRangeSqr - distanceToLightSqr) / (lightRangeSqr - fadeStartDistanceSqr)
+            // We rewrite smoothFactor to be able to pre compute the constant terms below and apply the smooth factor
+            // with one MAD instruction
+            // smoothFactor =  distanceSqr * (1.0 / (fadeDistanceSqr - lightRangeSqr)) + (-lightRangeSqr / (fadeDistanceSqr - lightRangeSqr)
+            //                 distanceSqr *           oneOverFadeRangeSqr             +              lightRangeSqrOverFadeRangeSqr
+
+            // The other smoothing factor matches the one used in the Unity lightmapper but is slower than the linear one.
+            // smoothFactor = (1.0 - saturate((distanceSqr * 1.0 / lightrangeSqr)^2))^2
+            float lightRangeSqr = range * range;
+            float fadeStartDistanceSqr = 0.8f * 0.8f * lightRangeSqr;
+            float fadeRangeSqr = (fadeStartDistanceSqr - lightRangeSqr);
+            float oneOverFadeRangeSqr = 1.0f / fadeRangeSqr;
+            float lightRangeSqrOverFadeRangeSqr = -lightRangeSqr / fadeRangeSqr;
+            float oneOverLightRangeSqr = 1.0f / Mathf.Max(0.0001f, range * range);
+
+            // On untethered devices: Use the faster linear smoothing factor (SHADER_HINT_NICE_QUALITY).
+            // On other devices: Use the smoothing factor that matches the GI.
+            LightAttnuation.x =
+                GraphicsSettings.HasShaderDefine(Graphics.activeTier, BuiltinShaderDefine.SHADER_API_MOBILE) ||
+                SystemInfo.graphicsDeviceType == GraphicsDeviceType.Switch
+                    ? oneOverFadeRangeSqr
+                    : oneOverLightRangeSqr;
+            LightAttnuation.y = lightRangeSqrOverFadeRangeSqr;
+            if (type == LightType.Spot)
+            {
+                // Spot Attenuation with a linear falloff can be defined as
+                // (SdotL - cosOuterAngle) / (cosInnerAngle - cosOuterAngle)
+                // This can be rewritten as
+                // invAngleRange = 1.0 / (cosInnerAngle - cosOuterAngle)
+                // SdotL * invAngleRange + (-cosOuterAngle * invAngleRange)
+                // If we precompute the terms in a MAD instruction
+                float cosOuterAngle = Mathf.Cos(Mathf.Deg2Rad * spotAngle * 0.5f);
+                // We neeed to do a null check for particle lights
+                // This should be changed in the future
+                // Particle lights will use an inline function
+                float cosInnerAngle;
+                if (innerSpotAngle > 0)
+                    cosInnerAngle = Mathf.Cos(innerSpotAngle * Mathf.Deg2Rad * 0.5f);
+                else
+                    cosInnerAngle =
+                        Mathf.Cos((2.0f *
+                                   Mathf.Atan(Mathf.Tan(spotAngle * 0.5f * Mathf.Deg2Rad) * (64.0f - 18.0f) / 64.0f)) *
+                                  0.5f);
+                float smoothAngleRange = Mathf.Max(0.001f, cosInnerAngle - cosOuterAngle);
+                float invAngleRange = 1.0f / smoothAngleRange;
+                float add = -cosOuterAngle * invAngleRange;
+                LightAttnuation.z = invAngleRange;
+                LightAttnuation.w = add;
+            }
         }
 
-        public LightData(Light light)
+        public static int Size()
         {
-            lightColor = light.color;
-            _intensity = light.intensity;
-            innerAngle = light.innerSpotAngle;
-            spotAngle = light.spotAngle;
+            return sizeof(float) * 4 + sizeof(float) * 4 + sizeof(float) * 4 + sizeof(float) * 4;
         }
     }
-
     //灯的相关数据
     public GameObject lightGroup;
     private List<Light> mLightList;
@@ -92,24 +152,7 @@ public class ComputeMultiLights : MonoBehaviour
         nowCountNumber = 0;
     }
 
-    private struct LightsInfo
-    {
-        public Color LightColor;
-        public Vector4 LightPosition;
-        public Vector4 LightDirection;
-
-        public LightsInfo(Color color, Vector4 position, Vector4 direction)
-        {
-            LightColor = color;
-            LightPosition = position;
-            LightDirection = direction;
-        }
-
-        public static int Size()
-        {
-            return sizeof(float) * 4 + sizeof(float) * 4 + sizeof(float) * 4;
-        }
-    }
+    
 
     private void ResetRT()
     {
@@ -129,11 +172,12 @@ public class ComputeMultiLights : MonoBehaviour
         mLightInfoList.Clear();
         for (int i = 0; i < lightNumber; i++)
         {
+            int type = mLightList[i].type == LightType.Spot ? 1 : 0;
             Vector4 position = new Vector4(mLightList[i].transform.position.x, mLightList[i].transform.position.y,
                 mLightList[i].transform.position.z, mLightList[i].range);
-            Vector4 direction = new Vector4(mLightList[i].transform.forward.x, mLightList[i].transform.forward.y,
-                mLightList[i].transform.forward.z, mLightList[i].spotAngle);
-            mLightInfoList.Add(new LightsInfo(mLightList[i].color,position,direction));
+            Vector4 direction = new Vector4(-mLightList[i].transform.forward.x, -mLightList[i].transform.forward.y,
+                -mLightList[i].transform.forward.z,mLightList[i].intensity );
+            mLightInfoList.Add(new LightsInfo(mLightList[i].color *mLightList[i].intensity , position, direction,mLightList[i].range,mLightList[i].type,mLightList[i].spotAngle,mLightList[i].innerSpotAngle));
         }
 
         LightInfoBuffer.SetData(mLightInfoList);
@@ -148,11 +192,7 @@ public class ComputeMultiLights : MonoBehaviour
         Shader.SetGlobalBuffer(ShaderLightInfoList, LightInfoBuffer);
         Shader.SetGlobalTexture(LightIndexRTID, LightIndexRT);
         Shader.SetGlobalVector(MapOffsetID, MapOffset);
-    }
-
-    private void Update()
-    {
-        DrawIndexTexture();
+        Shader.SetGlobalVector(LightTextureSize,TextureSize);
     }
 
 
@@ -164,7 +204,7 @@ public class ComputeMultiLights : MonoBehaviour
     {
         while (mLightUpdateTrigger)
         {
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < 20; i++)
             {
                 if (nowCountNumber == lightNumber)
                 {
@@ -185,6 +225,24 @@ public class ComputeMultiLights : MonoBehaviour
                     isDirty = true;
                 }
 
+                if (mLightList[nowCountNumber].color != mCachedLight[nowCountNumber].GetLightColor())
+                {
+                    mCachedLight[nowCountNumber].SetLightColor(mLightList[nowCountNumber].color);
+                    isDirty = true;
+                }
+
+                if (mLightList[nowCountNumber].range != mCachedLight[nowCountNumber].GetRange())
+                {
+                    mCachedLight[nowCountNumber].SetRange(mLightList[nowCountNumber].range);
+                    isDirty = true;
+                }
+
+                if (mLightList[nowCountNumber].spotAngle != mCachedLight[nowCountNumber].GetSpotAngle())
+                {
+                    mCachedLight[nowCountNumber].SetSpotAngle(mLightList[nowCountNumber].spotAngle);
+                    isDirty = true;
+                }
+
                 nowCountNumber++;
             }
 
@@ -200,12 +258,12 @@ public class ComputeMultiLights : MonoBehaviour
         //TODO:cs做图，重置rt，感觉不麻烦
         if (isDirty)
         {
-            Debug.Log("有变化了");
+            DrawIndexTexture();
             isDirty = false;
         }
     }
 
-    private void Start()
+    private void OnEnable()
     {
         InitData();
     }
@@ -217,6 +275,10 @@ public class ComputeMultiLights : MonoBehaviour
         if (LightInfoBuffer != null)
         {
             LightInfoBuffer.Release();
+            LightInfoBuffer = null;
         }
+
+        mLightInfoList.Clear();
+        mLightInfoList = null;
     }
 }

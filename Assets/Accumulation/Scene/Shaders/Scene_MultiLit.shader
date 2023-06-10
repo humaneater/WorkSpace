@@ -71,12 +71,7 @@ Shader "Scene/MultiLit"
 
             #pragma vertex vert
             #pragma fragment frag
-            struct LightsInfo
-            {
-                float4 color;
-                float4 position;
-                float4 direction;
-            };
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -86,6 +81,7 @@ Shader "Scene/MultiLit"
                 float2 texcoord : TEXCOORD0;
                 float2 texcoord2 : TEXCOORD1;
             };
+
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -96,9 +92,10 @@ Shader "Scene/MultiLit"
                 half4 tbn[3] : TEXCOORD4;
             };
 
+
             sampler2D _NormalTex, _MainTex, _MetallicTex, _RoughnessTex;
             float _Roughness, _Metallic;
-            float4 _MapOffset;
+            float4 _MapOffset, _LightIndexTex_Size;
             Texture3D<float4> _LightIndexTex;
             SamplerState sampler_clamp_point_LightIndexTex;
             StructuredBuffer<LightsInfo> _LightsInfo;
@@ -137,10 +134,46 @@ Shader "Scene/MultiLit"
 
                 //自定义的额外光源光照，先读图
                 float3 uvw = worldPos - _MapOffset.xyz;
-                uvw = float3(uvw.x/256,uvw.z/256,uvw.y/32);
-                float4 index = _LightIndexTex.SampleLevel(sampler_clamp_point_LightIndexTex,uvw,0);
-                float3 color = length(_LightsInfo[(uint)index.x].position - worldPos)/200 + length(_LightsInfo[(uint)index.y].position - worldPos)/200 + length(_LightsInfo[(uint)index.z].position - worldPos)/200;
-                return float4( color, 1);
+                uvw = float3(floor(uvw.x) / _LightIndexTex_Size.x, floor(uvw.z) / _LightIndexTex_Size.y,
+                             floor(uvw.y) / _LightIndexTex_Size.z);
+                float4 index = _LightIndexTex.SampleLevel(sampler_clamp_point_LightIndexTex, uvw, 0);
+                float3 addLightRes = 0;
+                //可能要分开处理光源，不能让无关光源干扰结果
+                if (index.x != -1)
+                {
+                    Light light01 = InitCustomLight(_LightsInfo[(uint)index.x].color,
+                                                    _LightsInfo[(uint)index.x].position,
+                                                    _LightsInfo[(uint)index.x].direction, data.positionWS,
+                                                    _LightsInfo[(uint)index.x].attenuation);
+                    addLightRes += GetCustomAdditionalLighting(light01, data);
+                }
+                if (index.y != -1)
+                {
+                    Light light02 = InitCustomLight(_LightsInfo[(uint)index.y].color,
+                                                    _LightsInfo[(uint)index.y].position,
+                                                    _LightsInfo[(uint)index.y].direction, data.positionWS,
+                                                    _LightsInfo[(uint)index.y].attenuation);
+                    addLightRes += GetCustomAdditionalLighting(light02, data);
+                }
+                if (index.z != -1)
+                {
+                    Light light03 = InitCustomLight(_LightsInfo[(uint)index.z].color,
+                                                    _LightsInfo[(uint)index.z].position,
+                                                    _LightsInfo[(uint)index.z].direction, data.positionWS,
+                                                    _LightsInfo[(uint)index.z].attenuation);
+                    addLightRes += GetCustomAdditionalLighting(light03, data);
+                }
+                if (index.w != -1)
+                {
+                    Light light04 = InitCustomLight(_LightsInfo[(uint)index.w].color,
+                                                    _LightsInfo[(uint)index.w].position,
+                                                    _LightsInfo[(uint)index.w].direction, data.positionWS,
+                                                    _LightsInfo[(uint)index.w].attenuation);
+                    addLightRes += GetCustomAdditionalLighting(light04, data);
+                }
+
+
+                return float4(res + addLightRes, 1);
             }
 
             // make fog work

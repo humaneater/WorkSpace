@@ -38,7 +38,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Metallic: 0.874
-    - _Roughness: 0.164
+    - _Metallic: 0.813
+    - _Roughness: 1
     m_Colors: []
   m_BuildTextureStacks: []
