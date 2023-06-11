@@ -8,6 +8,7 @@ Shader "Scene/MultiLit"
         _Roughness("粗糙度",range(0,1)) = 0
         _Metallic("金属都",range(0,1)) = 0
         _MetallicTex("金属都贴图",2D) = "white"{}
+        _Glossy("额外光的glossy",range(0,10)) = 1
     }
     SubShader
     {
@@ -40,8 +41,8 @@ Shader "Scene/MultiLit"
 
             // -------------------------------------
             // Universal Pipeline keywords
-            // #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
-            // #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            //#pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            //#pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BLENDING
             #pragma multi_compile_fragment _ _REFLECTION_PROBE_BOX_PROJECTION
@@ -94,10 +95,11 @@ Shader "Scene/MultiLit"
 
 
             sampler2D _NormalTex, _MainTex, _MetallicTex, _RoughnessTex;
-            float _Roughness, _Metallic;
+            float _Roughness, _Metallic,_Glossy;
             float4 _MapOffset, _LightIndexTex_Size;
             Texture3D<float4> _LightIndexTex;
             SamplerState sampler_clamp_point_LightIndexTex;
+            int _MapScaling;
             StructuredBuffer<LightsInfo> _LightsInfo;
 
             v2f vert(appdata input)
@@ -134,45 +136,45 @@ Shader "Scene/MultiLit"
 
                 //自定义的额外光源光照，先读图
                 float3 uvw = worldPos - _MapOffset.xyz;
-                uvw = float3(floor(uvw.x) / _LightIndexTex_Size.x, floor(uvw.z) / _LightIndexTex_Size.y,
-                             floor(uvw.y) / _LightIndexTex_Size.z);
+               _LightIndexTex_Size /=_MapScaling;
+                uvw = float3(uvw.x / _LightIndexTex_Size.x,uvw.z / _LightIndexTex_Size.y,uvw.y / _LightIndexTex_Size.z);
                 float4 index = _LightIndexTex.SampleLevel(sampler_clamp_point_LightIndexTex, uvw, 0);
                 float3 addLightRes = 0;
                 //可能要分开处理光源，不能让无关光源干扰结果
-                if (index.x != -1)
+                if (index.x != 1000)
                 {
                     Light light01 = InitCustomLight(_LightsInfo[(uint)index.x].color,
                                                     _LightsInfo[(uint)index.x].position,
                                                     _LightsInfo[(uint)index.x].direction, data.positionWS,
                                                     _LightsInfo[(uint)index.x].attenuation);
-                    addLightRes += GetCustomAdditionalLighting(light01, data);
+                    addLightRes += GetCustomAdditionalLighting(light01, data,_Glossy);
                 }
-                if (index.y != -1)
+                if (index.y != 1000)
                 {
                     Light light02 = InitCustomLight(_LightsInfo[(uint)index.y].color,
                                                     _LightsInfo[(uint)index.y].position,
                                                     _LightsInfo[(uint)index.y].direction, data.positionWS,
                                                     _LightsInfo[(uint)index.y].attenuation);
-                    addLightRes += GetCustomAdditionalLighting(light02, data);
+                    addLightRes += GetCustomAdditionalLighting(light02, data,_Glossy);
                 }
-                if (index.z != -1)
+                if (index.z != 1000)
                 {
                     Light light03 = InitCustomLight(_LightsInfo[(uint)index.z].color,
                                                     _LightsInfo[(uint)index.z].position,
                                                     _LightsInfo[(uint)index.z].direction, data.positionWS,
                                                     _LightsInfo[(uint)index.z].attenuation);
-                    addLightRes += GetCustomAdditionalLighting(light03, data);
+                    addLightRes += GetCustomAdditionalLighting(light03, data,_Glossy);
                 }
-                if (index.w != -1)
+                if (index.w != 1000)
                 {
                     Light light04 = InitCustomLight(_LightsInfo[(uint)index.w].color,
                                                     _LightsInfo[(uint)index.w].position,
                                                     _LightsInfo[(uint)index.w].direction, data.positionWS,
                                                     _LightsInfo[(uint)index.w].attenuation);
-                    addLightRes += GetCustomAdditionalLighting(light04, data);
+                    addLightRes += GetCustomAdditionalLighting(light04, data,_Glossy);
                 }
 
-
+                
                 return float4(res + addLightRes, 1);
             }
 

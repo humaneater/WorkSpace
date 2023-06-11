@@ -93,9 +93,9 @@ public class SDFGenerater : EditorWindow
             return 0f;
         }
 
-        for (int i = 0; i < 120; i++)
+        for (int i = 0; i < 360; i++)
         {
-            mShooter.transform.Rotate(new Vector3(0, 3f, 0));
+            mShooter.transform.Rotate(new Vector3(0, 1f, 0));
             RaycastHit hit;
             if (Physics.Raycast(mShooter.transform.position, mShooter.transform.forward, out hit, 255f, layerMask))
             {

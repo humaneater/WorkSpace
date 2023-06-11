@@ -72,7 +72,7 @@ Shader "Effect/SDF_Shadow"
                     {
                         return 0.0f;
                     }
-                    totalLength += dis / (size * (1 + dither));
+                    totalLength += dis / (size * (1.0f + dither*0.1));
                     if (totalLength > lengthOfStep)
                     {
                         return 1.0f;

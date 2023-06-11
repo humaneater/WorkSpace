@@ -64,14 +64,14 @@ Light InitCustomLight(float3 color,float3 lightPosition, float3 direction, float
 }
 
 
-float3 GetCustomAdditionalLighting(Light light, InputData data,float gloosy = 2.0f)
+float3 GetCustomAdditionalLighting(Light light, InputData data,float glossy = 2.0f)
 {
     //漫反射
     float NOL = dot(light.direction,data.normalWS);
     float3 diffuse = light.color * NOL ;
     float3 halfDir = normalize(light.direction+data.viewDirectionWS);
     float HON = dot(halfDir,data.normalWS);
-    float3 specular = light.color * pow(HON,exp2(gloosy));
+    float3 specular = light.color * pow(HON,exp2(glossy));
     return saturate((diffuse+specular) * light.distanceAttenuation);
 }
 

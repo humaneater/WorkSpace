@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: PostProcess_Scene_MultiLit
+  m_Name: Scene_MultiLit 2
   m_Shader: {fileID: 4800000, guid: b783fddaf4d8e1540b71552fbfa5f4dc, type: 3}
   m_ValidKeywords: []
   m_InvalidKeywords: []
@@ -21,7 +21,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: c7440726c4b7b9843a97b3ad10bbda74, type: 3}
+        m_Texture: {fileID: 2800000, guid: 3037c1ecc23578c4a869f91e9ae9b7c9, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicTex:
@@ -29,16 +29,17 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _NormalTex:
-        m_Texture: {fileID: 2800000, guid: 8dfb9595f39556449a9da4a69a1fe5ee, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _RoughnessTex:
-        m_Texture: {fileID: 2800000, guid: 733658d8cb7b62c4bb67fc83e6f4c198, type: 3}
+        m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Metallic: 0.813
-    - _Roughness: 1
+    - _Glossy: 1
+    - _Metallic: 0
+    - _Roughness: 0.968
     m_Colors: []
   m_BuildTextureStacks: []

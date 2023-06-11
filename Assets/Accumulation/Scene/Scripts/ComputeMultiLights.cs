@@ -123,6 +123,8 @@ public class ComputeMultiLights : MonoBehaviour
     private static readonly int LightTextureSize = Shader.PropertyToID("_LightIndexTex_Size");
     [SerializeField] private Vector3 MapOffset;
     private static readonly int MapOffsetID = Shader.PropertyToID("_MapOffset");
+    [SerializeField] private int MapScaling = 1;
+    private static readonly int MapScalingID = Shader.PropertyToID("_MapScaling");
     private static readonly int LightListCount = Shader.PropertyToID("_LightListCount");
 
 
@@ -184,6 +186,7 @@ public class ComputeMultiLights : MonoBehaviour
         //向cs里输入需要的数据
         LightGetheringCS.SetVector(LightTextureSize, TextureSize);
         LightGetheringCS.SetVector(MapOffsetID, MapOffset);
+        LightGetheringCS.SetInt(MapScalingID,MapScaling);
         LightGetheringCS.SetInt(LightListCount, lightNumber);
         LightGetheringCS.SetBuffer(DrawIndexTextureKernel, ShaderLightInfoList, LightInfoBuffer);
         LightGetheringCS.SetTexture(DrawIndexTextureKernel, LightIndexRTID, LightIndexRT);
@@ -193,6 +196,7 @@ public class ComputeMultiLights : MonoBehaviour
         Shader.SetGlobalTexture(LightIndexRTID, LightIndexRT);
         Shader.SetGlobalVector(MapOffsetID, MapOffset);
         Shader.SetGlobalVector(LightTextureSize,TextureSize);
+        Shader.SetGlobalInt(MapScalingID,MapScaling);
     }
 
 
